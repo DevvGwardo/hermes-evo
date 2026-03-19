@@ -340,7 +340,7 @@ describe('Evolution pipeline', () => {
       expect(result.skill.id).toBeTruthy();
     });
 
-    it('throws when skipValidation is false and pattern produces a low-quality skill', () => {
+    it('returns a valid skill even for low-frequency patterns (Code Debug fallback)', () => {
       const pattern: FailurePattern = {
         id: `fp-${randomUUID()}`,
         toolName: 'unknown_tool',
@@ -354,8 +354,12 @@ describe('Evolution pipeline', () => {
         autoFixAvailable: false,
       };
 
-      // Low frequency + no examples → low confidence + short implementation → validation fails
-      expect(() => generateFromFailure(pattern)).toThrow();
+      // Unknown tool/error types fall back to Code Debug template, producing a valid skill.
+      // Confidence is low (frequency=1, examples=0) but the skill is structurally valid.
+      const result = generateFromFailure(pattern);
+      expect(result.skill.id).toBeTruthy();
+      expect(result.skill.name).toBeTruthy();
+      expect(result.skill.implementation.length).toBeGreaterThan(100);
     });
 
     it('generates distinct skill names for distinct failure patterns', () => {

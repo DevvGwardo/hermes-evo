@@ -372,6 +372,7 @@ export class EvoHub {
 
   async runOnce(): Promise<void> {
     await this.store.init();
+    this.running = true;
     await this.runEvolutionCycle();
   }
 

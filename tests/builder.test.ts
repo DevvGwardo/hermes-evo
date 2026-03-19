@@ -320,14 +320,14 @@ describe('builder/skillGenerator.ts', () => {
       expect(selectTemplateType(fp)).toBe('code_review');
     });
 
-    it('returns "debugging" for generic error type patterns', () => {
+    it('returns "Code Debug" for generic error type patterns', () => {
       const fp = makeFailurePattern({
         toolName: 'unknown_tool',
         errorType: 'unknown',
         errorMessage: 'Something went wrong',
       });
-      // Unknown patterns fall back to debugging
-      expect(selectTemplateType(fp)).toBe('debugging');
+      // Unknown patterns fall back to Code Debug (the generic debugging template)
+      expect(selectTemplateType(fp)).toBe('Code Debug');
     });
   });
 

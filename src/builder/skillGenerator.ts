@@ -241,8 +241,8 @@ export function selectTemplateType(failure: FailurePattern): string {
   }
   if (toolNameLower.includes('search')) return 'web_search';
 
-  // Default fallback — debugging is the most generic and covers unknown patterns
-  return 'debugging';
+  // Default fallback — Code Debug is the most generic and covers unknown patterns
+  return 'Code Debug';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
