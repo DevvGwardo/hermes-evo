@@ -282,4 +282,12 @@ export interface HubStatus {
   deployedSkills: number;
   knownFailurePatterns: number;
   memorySize: number;  // bytes
+  gatewayWatchdog?: {
+    running: boolean;
+    gatewayUp: boolean;
+    consecutiveFailures: number;
+    totalRestarts: number;
+    lastRestartAt?: number;
+    inCooldown: boolean;
+  };
 }

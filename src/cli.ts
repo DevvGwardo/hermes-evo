@@ -167,6 +167,7 @@ async function startRepl(): Promise<void> {
       ['approve <id>', 'Approve a proposed skill by id'],
       ['logs',         'Show recent evolution cycle logs'],
       ['stats',        'Show performance statistics'],
+      ['watchdog',     'Show gateway watchdog status'],
       ['restart',      'Stop and restart the hub'],
       ['help',         'Show this help'],
       ['quit',         'Exit the REPL'],
@@ -256,6 +257,32 @@ async function startRepl(): Promise<void> {
         console.log(chalk.yellow('  Hub is initialising…'));
       } else {
         await printStats();
+      }
+    }
+
+    // ── watchdog ──────────────────────────────────────────────────────────────
+    else if (cmd === 'watchdog') {
+      if (!hubReady) {
+        console.log(chalk.yellow('  Hub is initialising…'));
+      } else {
+        const status = hub.getStatus();
+        const wd = status.gatewayWatchdog;
+        if (!wd) {
+          console.log(chalk.gray('  Watchdog not available'));
+        } else {
+          divider('Gateway Watchdog');
+          console.log(`  ${wd.running ? chalk.green('●') : chalk.red('○')} Watchdog ${wd.running ? 'active' : 'stopped'}`);
+          console.log(`  Gateway:           ${wd.gatewayUp ? chalk.green('UP') : chalk.red('DOWN')}`);
+          console.log(`  Consecutive fails: ${chalk.cyan(wd.consecutiveFailures)}`);
+          console.log(`  Total restarts:    ${chalk.cyan(wd.totalRestarts)}`);
+          if (wd.lastRestartAt) {
+            const ago = Math.round((Date.now() - wd.lastRestartAt) / 1000);
+            console.log(`  Last restart:      ${chalk.cyan(ago)}s ago`);
+          }
+          if (wd.inCooldown) {
+            console.log(`  ${chalk.yellow('⏳ In cooldown — waiting before next restart attempt')}`);
+          }
+        }
       }
     }
 
