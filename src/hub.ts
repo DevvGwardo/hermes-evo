@@ -252,11 +252,59 @@ export class EvoHub {
     };
 
     // ── Phase 1: Monitor ────────────────────────────────────────────────────
+    // Fetch live sessions from the gateway (the passive monitor doesn't poll)
     const monitorStart = Date.now();
     try {
+      const gateway = new Gateway(this.config.OPENCLAW_GATEWAY_URL);
+      const sessionManager = new SessionManager(gateway);
+      const sessions = await sessionManager.getActiveSessions();
+      const now = Date.now();
+
+      for (const session of sessions) {
+        // Skip sessions we've already seen
+        if (this.recentMetrics.some((m) => m.sessionId === session.key)) continue;
+
+        try {
+          const messages = await gateway.getSessionHistory(session.key, 50, true);
+          const toolCalls = messages
+            .filter((m) => m.role === 'assistant' && Array.isArray(m.content))
+            .flatMap((m) =>
+              (m.content as Array<{ type: string; text?: string }>)
+                .filter((c) => c.type === 'tool_use')
+            );
+          const errorCount = messages.filter(
+            (m) =>
+              m.role === 'assistant' &&
+              Array.isArray(m.content) &&
+              (m.content as Array<{ type: string; text?: string }>).some(
+                (c) => c.type === 'text' && typeof c.text === 'string' && c.text.toLowerCase().includes('error')
+              )
+          ).length;
+
+          this.recentMetrics.push({
+            sessionId: session.key,
+            toolCalls: [],
+            startTime: session.updatedAt ?? now - 60000,
+            endTime: now,
+            success: errorCount === 0,
+            errorCount,
+            totalToolCalls: toolCalls.length,
+            avgLatencyMs: 0,
+          });
+        } catch {
+          // Skip sessions we can't read
+        }
+      }
+
+      if (this.recentMetrics.length > 1000) {
+        this.recentMetrics = this.recentMetrics.slice(-1000);
+      }
+
       this.currentCycle.phases.monitor.eventsProcessed = this.recentMetrics.length;
+      this.log('info', chalk.gray(`  📡 Monitor: ${sessions.length} sessions fetched, ${this.recentMetrics.length} total metrics`));
     } catch (err) {
-      this.log('error', `Monitor phase failed: ${err}`);
+      this.log('warn', `Monitor phase: could not fetch sessions — ${err}`);
+      this.currentCycle.phases.monitor.eventsProcessed = this.recentMetrics.length;
     }
     this.currentCycle.phases.monitor.durationMs = Date.now() - monitorStart;
 
