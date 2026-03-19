@@ -303,9 +303,13 @@ export class EvoHub {
 
         const decision = promoter.evaluate(completed);
         if (decision.promoted) {
-          await promoter.promote(completed.id);
-          this.currentCycle.phases.integrate.improvementsDeployed++;
-          this.log('info', chalk.greenBright(`  🚀 Promoted: ${skill.name} (+${result.improvementPct.toFixed(1)}%)`));
+          const promoteResult = await promoter.promote(completed.id);
+          if (promoteResult.promoted) {
+            this.currentCycle.phases.integrate.improvementsDeployed++;
+            this.log('info', chalk.greenBright(`  🚀 Promoted: ${skill.name} (+${result.improvementPct.toFixed(1)}%)`));
+          } else if (promoteResult.reason === 'requires_approval' && promoteResult.approvalId) {
+            this.log('info', `🛑 Skill ${skill.name} promoted but requires human approval. Run /evo approve ${promoteResult.approvalId} to deploy.`);
+          }
         } else {
           this.log('info', chalk.yellow(`  ⏳ Not yet: ${skill.name} (${result.improvementPct.toFixed(1)}% improvement)`));
         }
