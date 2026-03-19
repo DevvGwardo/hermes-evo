@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'n
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { Experiment, GeneratedSkill, PromotionDecision } from '../types.js';
+import type { Experiment, GeneratedSkill, PromotionDecision, SkillApproval } from '../types.js';
 import { comparator } from './comparator.js';
 import { SkillManager } from '../openclaw/skillManager.js';
 import { improvementLog } from '../memory/improvementLog.js';
@@ -43,6 +43,9 @@ const skillManager = new SkillManager();
 
 /** In-memory store of experiments — replace with a persistence layer as needed */
 const experimentStore = new Map<string, Experiment>();
+
+/** In-memory store of pending skill approvals */
+const pendingApprovals = new Map<string, SkillApproval>();
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
@@ -143,13 +146,13 @@ export const promoter = {
    * Promote the treatment skill of a given experiment: write it to
    * ~/.openclaw/skills/<skillId>/ so OpenClaw picks it up on next startup.
    *
-   * Writes both SKILL.md and skill.json manifest, updates the skill status to
-   * 'deployed', logs the deployment path, records the win in improvementLog,
-   * and sends a system notification.
+   * Instead of deploying immediately, this creates a pending approval request
+   * and returns `{ promoted: false, reason: 'requires_approval', approvalId }`.
+   * Call `approveSkill(approvalId)` to complete the deployment.
    *
    * Idempotent: safe to call multiple times.
    */
-  async promote(experimentId: string): Promise<void> {
+  async promote(experimentId: string): Promise<{ promoted: boolean; reason: string; approvalId?: string }> {
     const experiment = experimentStore.get(experimentId);
 
     if (!experiment) {
@@ -159,7 +162,7 @@ export const promoter = {
     // If already promoted, log and exit cleanly
     if (experiment.promotedAt) {
       log.info(`Experiment ${experimentId} already promoted — skipping file write`);
-      return;
+      return { promoted: true, reason: 'Already promoted' };
     }
 
     const decision = promoter.evaluate(experiment);
@@ -169,11 +172,54 @@ export const promoter = {
       );
     }
 
-    // Fetch the treatment skill from the gateway (or load from store)
+    // Load the treatment skill to get its ID and name
+    const skill = await loadTreatmentSkill(experiment.treatmentSkillId);
+
+    // Create a pending approval record
+    const approvalId = `approval-${experimentId}-${Date.now()}`;
+    const approval: SkillApproval = {
+      skillId: skill.id,
+      requestedAt: new Date(),
+      requestedBy: 'auto-promoter',
+      status: 'pending',
+      experimentId,
+    };
+    pendingApprovals.set(approvalId, approval);
+
+    // Mark skill as pending_approval
+    skill.status = 'pending_approval';
+
+    log.info(`Skill ${skill.name} promoted but requires human approval`, {
+      approvalId,
+      experimentId,
+      skillId: skill.id,
+    });
+
+    return { promoted: false, reason: 'requires_approval', approvalId };
+  },
+
+  /**
+   * Approve a pending skill promotion and deploy it.
+   */
+  async approveSkill(approvalId: string): Promise<void> {
+    const approval = pendingApprovals.get(approvalId);
+    if (!approval) {
+      throw new Error(`Approval not found: ${approvalId}`);
+    }
+    if (approval.status !== 'pending') {
+      throw new Error(`Approval ${approvalId} is already ${approval.status}`);
+    }
+
+    const experiment = experimentStore.get(approval.experimentId);
+    if (!experiment) {
+      throw new Error(`Experiment not found: ${approval.experimentId}`);
+    }
+
+    // Load the treatment skill
     const skill = await loadTreatmentSkill(experiment.treatmentSkillId);
 
     // 1. Install skill to ~/.openclaw/skills/<skill-id>/ with SKILL.md + manifest
-    const installedPath = await skillManager.installSkill(skill, experimentId);
+    const installedPath = await skillManager.installSkill(skill, experiment.id);
 
     // 2. Update skill status to 'deployed'
     skill.status = 'deployed';
@@ -181,12 +227,11 @@ export const promoter = {
     experiment.status = 'promoted';
     experiment.promotedAt = new Date();
 
-    // Update in-memory record
-    experimentStore.set(experimentId, experiment);
+    experimentStore.set(experiment.id, experiment);
 
     // 3. Log the deployment path
     log.info(`Deployed to ~/.openclaw/skills/${skill.id}/`, {
-      experimentId,
+      experimentId: experiment.id,
       skillId: skill.id,
       skillName: skill.name,
       improvementPct: experiment.improvementPct,
@@ -196,9 +241,9 @@ export const promoter = {
     await improvementLog.record({
       timestamp: new Date(),
       type: 'experiment_won',
-      description: `Promoted skill "${skill.name}" after winning experiment ${experimentId} with ${experiment.improvementPct.toFixed(2)}% improvement`,
+      description: `Promoted skill "${skill.name}" after winning experiment ${experiment.id} with ${experiment.improvementPct.toFixed(2)}% improvement`,
       skillId: skill.id,
-      experimentId,
+      experimentId: experiment.id,
       metrics: {
         improvementPct: experiment.improvementPct,
         afterScore: experiment.statisticalSignificance * 100,
@@ -207,22 +252,55 @@ export const promoter = {
 
     // 5. Append to promotion log
     appendPromotionLog({
-      experimentId,
+      experimentId: experiment.id,
       skillId: skill.id,
       skillName: skill.name,
       promotedAt: experiment.promotedAt.toISOString(),
       improvementPct: experiment.improvementPct,
       confidence: experiment.statisticalSignificance,
+      approvedBy: approval.reviewer ?? 'system',
     });
 
-    log.info(`✅ Promoted skill "${skill.name}" → ${installedPath}`, {
-      experimentId,
+    // Mark approval as approved
+    approval.status = 'approved';
+    approval.reviewedAt = new Date();
+    pendingApprovals.set(approvalId, approval);
+
+    log.info(`✅ Approved skill "${skill.name}" → ${installedPath}`, {
+      approvalId,
+      experimentId: experiment.id,
       skillId: skill.id,
-      improvementPct: experiment.improvementPct,
     });
 
-    // 5. System notification
-    console.log(`[SYSTEM_NOTIFY] 🎉 Skill promoted and deployed: ${skill.name} → ~/.openclaw/skills/${skill.id}/`);
+    // System notification
+    console.log(`[SYSTEM_NOTIFY] 🎉 Skill approved and deployed: ${skill.name} → ~/.openclaw/skills/${skill.id}/`);
+  },
+
+  /**
+   * Reject a pending skill promotion.
+   */
+  rejectSkill(approvalId: string, reviewer?: string): void {
+    const approval = pendingApprovals.get(approvalId);
+    if (!approval) {
+      throw new Error(`Approval not found: ${approvalId}`);
+    }
+    if (approval.status !== 'pending') {
+      throw new Error(`Approval ${approvalId} is already ${approval.status}`);
+    }
+
+    approval.status = 'rejected';
+    approval.reviewedAt = new Date();
+    approval.reviewer = reviewer;
+    pendingApprovals.set(approvalId, approval);
+
+    log.info(`Skill approval rejected`, { approvalId, experimentId: approval.experimentId, reviewer });
+  },
+
+  /**
+   * Return all pending approvals.
+   */
+  getPendingApprovals(): SkillApproval[] {
+    return Array.from(pendingApprovals.values()).filter((a) => a.status === 'pending');
   },
 };
 

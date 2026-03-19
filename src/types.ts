@@ -82,7 +82,7 @@ export interface GeneratedSkill {
   confidence: number;       // 0-1
   targetFailurePattern?: string;
   generatedAt: Date;
-  status: 'proposed' | 'testing' | 'deployed' | 'rejected' | 'superseded';
+  status: 'proposed' | 'testing' | 'deployed' | 'rejected' | 'superseded' | 'pending_approval';
 }
 
 export interface SkillExample {
@@ -231,6 +231,18 @@ export interface PromotionDecision {
   promoted: boolean;
   reason: string;
   experimentsValidated: number;
+  requiresApproval?: boolean;
+  approvalId?: string;
+}
+
+export interface SkillApproval {
+  skillId: string;
+  requestedAt: Date;
+  requestedBy: 'auto-promoter';
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedAt?: Date;
+  reviewer?: string;
+  experimentId: string;
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────

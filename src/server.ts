@@ -16,6 +16,7 @@
 
 import http from 'node:http';
 import { EvoHub } from './hub.js';
+import { promoter } from './experiment/promoter.js';
 import { DEFAULT_CONFIG } from './constants.js';
 
 const PORT = 5174;
@@ -65,6 +66,17 @@ function sendError(res: http.ServerResponse, status: number, message: string): v
 
 function route(req: http.IncomingMessage, res: http.ServerResponse): void {
   const url = req.url ?? '/';
+  const method = req.method ?? 'GET';
+
+  // Helper to read request body for POST/PUT
+  function readBody(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => resolve(body));
+      req.on('error', reject);
+    });
+  }
 
   try {
     if (url === '/api/health') {
@@ -94,6 +106,33 @@ function route(req: http.IncomingMessage, res: http.ServerResponse): void {
       return;
     }
 
+    // GET /api/approvals/pending
+    if (method === 'GET' && url === '/api/approvals/pending') {
+      jsonResponse(res, 200, promoter.getPendingApprovals());
+      return;
+    }
+
+    // POST /api/approvals/:id/approve
+    if (method === 'POST' && url.match(/^\/api\/approvals\/([^/]+)\/approve$/)) {
+      const approvalId = url.match(/^\/api\/approvals\/([^/]+)\/approve$/)![1];
+      promoter.approveSkill(approvalId)
+        .then(() => jsonResponse(res, 200, { ok: true, approvalId }))
+        .catch((err) => sendError(res, 400, err instanceof Error ? err.message : String(err)));
+      return;
+    }
+
+    // POST /api/approvals/:id/reject
+    if (method === 'POST' && url.match(/^\/api\/approvals\/([^/]+)\/reject$/)) {
+      const approvalId = url.match(/^\/api\/approvals\/([^/]+)\/reject$/)![1];
+      try {
+        promoter.rejectSkill(approvalId);
+        jsonResponse(res, 200, { ok: true, approvalId });
+      } catch (err) {
+        sendError(res, 400, err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
     sendError(res, 404, `Route not found: ${url}`);
   } catch (err) {
     sendError(res, 500, err instanceof Error ? err.message : String(err));
@@ -111,9 +150,12 @@ server.on('error', (err) => {
 
 server.listen(PORT, () => {
   console.log(`OpenClaw Evo API server running on http://localhost:${PORT}`);
-  console.log('  GET /api/health       → { ok, ts }');
-  console.log('  GET /api/status      → hub status');
-  console.log('  GET /api/skills      → proposed skills');
-  console.log('  GET /api/experiments → active experiments');
-  console.log('  GET /api/metrics     → gateway dashboard metrics');
+  console.log('  GET  /api/health              → { ok, ts }');
+  console.log('  GET  /api/status              → hub status');
+  console.log('  GET  /api/skills              → proposed skills');
+  console.log('  GET  /api/experiments         → active experiments');
+  console.log('  GET  /api/metrics             → gateway dashboard metrics');
+  console.log('  GET  /api/approvals/pending   → pending approvals');
+  console.log('  POST /api/approvals/:id/approve → approve a skill');
+  console.log('  POST /api/approvals/:id/reject  → reject a skill');
 });
