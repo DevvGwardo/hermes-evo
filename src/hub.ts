@@ -332,6 +332,7 @@ export class EvoHub {
 
     this.currentCycle.phases.evaluate.durationMs = Date.now() - evaluateStart;
     this.currentCycle.phases.evaluate.patternsFound = report.topFailurePatterns.length;
+    this.currentCycle.phases.evaluate.overallScore = report.overallScore.overall;
     this.log('info', chalk.gray(`  📊 Evaluation: ${report.overallScore.overall.toFixed(1)}/100 overall score`));
     this.log('info', chalk.gray(`  📊 Found ${report.topFailurePatterns.length} failure patterns`));
 

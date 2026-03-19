@@ -216,7 +216,7 @@ export interface EvolutionCycle {
   startedAt: Date;
   phases: {
     monitor: { durationMs: number; eventsProcessed: number };
-    evaluate: { durationMs: number; patternsFound: number };
+    evaluate: { durationMs: number; patternsFound: number; overallScore?: number };
     build: { durationMs: number; skillsProposed: number };
     experiment: { durationMs: number; experimentsRun: number };
     integrate: { durationMs: number; improvementsDeployed: number };
