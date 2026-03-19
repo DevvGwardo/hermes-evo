@@ -23,6 +23,7 @@ import { MemoryStore } from './memory/store.js';
 import { failureCorpus } from './memory/failureCorpus.js';
 import { improvementLog } from './memory/improvementLog.js';
 import { SkillManager } from './openclaw/skillManager.js';
+import { GatewayWatchdog } from './watchdog.js';
 import type {
   EvoConfig,
   EvolutionCycle,
@@ -38,6 +39,7 @@ import type {
 export class EvoHub {
   private config: EvoConfig;
   private monitor: HarnessMonitor;
+  private watchdog: GatewayWatchdog;
   private store: MemoryStore;
   private recentMetrics: SessionMetrics[] = [];
   private proposedSkills: GeneratedSkill[] = [];
@@ -60,6 +62,11 @@ export class EvoHub {
     this.monitor = new HarnessMonitor({
       gatewayUrl: this.config.OPENCLAW_GATEWAY_URL,
       pollIntervalMs: this.config.OPENCLAW_POLL_INTERVAL_MS,
+    });
+
+    // Initialize gateway watchdog
+    this.watchdog = new GatewayWatchdog({
+      gatewayUrl: this.config.OPENCLAW_GATEWAY_URL,
     });
 
     this.log('info', `OpenClaw Evo Hub initialized`);
@@ -112,6 +119,31 @@ export class EvoHub {
     this.monitor.start();
     this.log('info', '✓ Harness monitor started');
 
+    // Start gateway watchdog
+    this.watchdog.addListener((event) => {
+      switch (event.type) {
+        case 'health_fail':
+          if (event.consecutiveFailures === 1) {
+            this.log('warn', `Gateway health check failed`);
+          }
+          break;
+        case 'restarting':
+          this.log('warn', chalk.yellow(`🔄 Watchdog restarting gateway (attempt #${event.attempt})...`));
+          break;
+        case 'restart_success':
+          this.log('info', chalk.green(`✓ Watchdog: gateway restarted successfully (attempt #${event.attempt})`));
+          break;
+        case 'restart_failed':
+          this.log('error', chalk.red(`✗ Watchdog: gateway restart failed — ${event.error}`));
+          break;
+        case 'max_restarts':
+          this.log('error', chalk.red(`🚨 Watchdog: max restarts reached (${event.total}). Manual intervention required.`));
+          break;
+      }
+    });
+    this.watchdog.start();
+    this.log('info', '✓ Gateway watchdog started');
+
     const stats = await improvementLog.getStats();
     this.log('info', `✓ Loaded ${stats.totalImprovements} improvement entries from history`);
 
@@ -133,6 +165,7 @@ export class EvoHub {
     this.running = false;
     if (this.cycleTimer) clearTimeout(this.cycleTimer);
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    this.watchdog.stop();
     this.monitor.stop();
     this.log('info', '🛑 OpenClaw Evo Hub stopped');
   }
@@ -358,6 +391,7 @@ export class EvoHub {
       deployedSkills: this.proposedSkills.filter((s) => s.status === 'deployed').length,
       knownFailurePatterns: 0, // resolved async, caller should await getStatusAsync
       memorySize: this.store.estimateSize(),
+      gatewayWatchdog: this.watchdog.getState(),
     };
   }
 
