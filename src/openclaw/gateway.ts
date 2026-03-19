@@ -6,7 +6,8 @@
  */
 
 import { readFileSync } from 'fs';
-import { homedir, join } from 'path';
+import { join } from 'path';
+import { homedir } from 'os';
 
 function getGatewayToken(): string {
   try {
@@ -76,8 +77,16 @@ export class Gateway {
       args.activeMinutes = activeMinutes;
     }
     const resp = await this.request('sessions_list', args);
-    console.log('[Gateway] sessions_list raw response keys:', Object.keys(resp));
-    console.log('[Gateway] sessions_list result:', JSON.stringify(resp.result ?? 'none').slice(0, 200));
+
+    // Gateway wraps response in { content: [{ type: "text", text: "{\"count\":N,\"sessions\":[...]}" }] }
+    const result = resp.result as { content?: { type: string; text: string }[] } | undefined;
+    const content = result?.content;
+    if (Array.isArray(content) && content.length > 0 && typeof content[0].text === 'string') {
+      const inner = JSON.parse(content[0].text);
+      return (inner.sessions ?? []) as OpenClawSession[];
+    }
+
+    // Fallback: try direct result.sessions
     const details = resp.result as { sessions?: OpenClawSession[] } | undefined;
     return details?.sessions ?? [];
   }
