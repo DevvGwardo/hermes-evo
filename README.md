@@ -1,210 +1,293 @@
-# 🧬 OpenClaw Evo — Self-Evolving AI Assistant
+# OpenClaw Evo — Self-Evolving AI Assistant
 
 [![CI](https://github.com/DevvGwardo/openclaw-evo/actions/workflows/ci.yml/badge.svg)](https://github.com/DevvGwardo/openclaw-evo/actions/workflows/ci.yml)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-green)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/typescript-5.0-blue)](https://www.typescriptlang.org)
 
-## ⚡ Quick Start
+> OpenClaw that monitors, evaluates, and improves itself — recursively.
+
+**OpenClaw Evo** is a self-evolution engine for [OpenClaw](https://github.com/DevvGwardo/openclaw). It watches how your AI assistant performs, identifies recurring failures, automatically generates fixes (skills), A/B tests them with statistical rigor, and deploys the winners — continuously, without human intervention.
+
+Inspired by recursive self-improvement (MiniMax M2.7), it creates a closed feedback loop where the AI assistant gets better at its job over time.
+
+## Quick Start
 
 ```bash
 # Clone & install
 git clone https://github.com/DevvGwardo/openclaw-evo.git && cd openclaw-evo && npm install
 
-# Run everything (hub + dashboard)
-npm run dev
+# Build
+npm run build
 
-# Run just the dashboard
-npm run dev:dashboard
-
-# Start the evolution hub
+# Start the evolution hub (interactive REPL)
 npm run start:hub
 
-# Run one evolution cycle
+# Run one evolution cycle and exit
 npm run evolve:once
+
+# Dashboard + hub (dev mode)
+npm run dev
 
 # Tests
 npm run test
 ```
 
-## 📊 Project Stats
+## How It Works
 
-| Metric | Value |
-|--------|-------|
-| **TypeScript** | 7,452 lines |
-| **Components** | 7 core modules |
-| **Phases** | 4 self-evolution phases |
+OpenClaw Evo runs a five-phase evolution cycle every 5 minutes:
 
----
+```mermaid
+flowchart LR
+    A["Monitor"] --> B["Evaluate"] --> C["Build"] --> D["Experiment"] --> E["Integrate"]
+    E -->|"repeat"| A
 
-> OpenClaw that monitors, evaluates, and improves itself — recursively.
-
-**OpenClaw Evo** is a self-evolution system for OpenClaw. It watches how your AI assistant works, identifies failures and bottlenecks, builds new tools and skills to fix them, runs experiments to validate improvements, and integrates winning changes back into the system — continuously, without human intervention.
-
----
-
-## Core Concept
-
-Inspired by MiniMax M2.7's recursive self-improvement loop, OpenClaw Evo creates a **closed feedback loop**:
-
-```
-Monitor → Evaluate → Plan → Build → Experiment → Integrate → (repeat)
+    style A fill:#0f1729,stroke:#00e5c8,color:#e0e0e0
+    style B fill:#0f1729,stroke:#39d353,color:#e0e0e0
+    style C fill:#0f1729,stroke:#f0c040,color:#e0e0e0
+    style D fill:#0f1729,stroke:#e06040,color:#e0e0e0
+    style E fill:#0f1729,stroke:#a070f0,color:#e0e0e0
 ```
 
-OpenClaw Evo acts as a meta-agent — it doesn't just help you with tasks, it helps **improve itself**.
-
----
+| Phase | What happens |
+|-------|-------------|
+| **Monitor** | Fetches active sessions from the OpenClaw gateway, collects tool calls, errors, and latency into `SessionMetrics` |
+| **Evaluate** | Scores sessions across 5 dimensions (accuracy, efficiency, speed, reliability, coverage) and mines recurring failure patterns |
+| **Build** | For each top failure pattern, generates a new skill using parameterized templates, validates structure, computes a confidence score |
+| **Experiment** | Runs A/B tests — spawns sessions with the new skill (treatment) vs. without (control), then runs a two-proportion z-test |
+| **Integrate** | Promotes winners (p < 0.05, improvement >= 10%) to `~/.openclaw/skills/`, rejects losers, logs everything |
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    subgraph External["External"]
+        GW["OpenClaw Gateway\nlocalhost:18789"]
+        Skills["~/.openclaw/skills/"]
+        Disk["~/.openclaw/evo-memory/"]
+    end
+
+    subgraph Evo["OpenClaw Evo"]
+        direction TB
+
+        CLI["CLI / REPL"]
+        Dashboard["Dashboard\nport 5174"]
+
+        subgraph Core["Core Engine"]
+            HUB["EvoHub"]
+
+            subgraph Harness["Harness"]
+                MON["Monitor"]
+                ST["Session Tracker"]
+                TA["Tool Analyzer"]
+            end
+
+            subgraph Eval["Evaluator"]
+                SC["Scorer"]
+                PD["Pattern Detector"]
+                RG["Report Generator"]
+            end
+
+            subgraph Build["Builder"]
+                SG["Skill Generator"]
+                SV["Skill Validator"]
+                TL["Template Library"]
+            end
+
+            subgraph Exp["Experiment"]
+                RN["Runner"]
+                CMP["Comparator"]
+                PR["Promoter"]
+            end
+
+            subgraph Mem["Memory"]
+                MS["Store"]
+                FC["Failure Corpus"]
+                IL["Improvement Log"]
+            end
+        end
+
+        CLI --> HUB
+        Dashboard --> HUB
+        HUB --> Harness
+        HUB --> Eval
+        HUB --> Build
+        HUB --> Exp
+        HUB --> Mem
+    end
+
+    MON <-->|"HTTP poll"| GW
+    RN -->|"spawn sessions"| GW
+    PR -->|"deploy"| Skills
+    MS <-->|"read/write"| Disk
+
+    style Evo fill:#0a0a0f,stroke:#252535,color:#e0e0e0
+    style Core fill:#111119,stroke:#252535,color:#e0e0e0
+    style Harness fill:#181824,stroke:#00e5c8,color:#e0e0e0
+    style Eval fill:#181824,stroke:#39d353,color:#e0e0e0
+    style Build fill:#181824,stroke:#f0c040,color:#e0e0e0
+    style Exp fill:#181824,stroke:#e06040,color:#e0e0e0
+    style Mem fill:#181824,stroke:#a070f0,color:#e0e0e0
+    style External fill:#1a1a2e,stroke:#444,color:#e0e0e0
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    OpenClaw Evo Hub                      │
-│         (orchestrates all components)                    │
-└──────┬──────┬──────┬──────┬──────┬──────────┬──────────┘
-       │      │      │      │      │          │
-   ┌───┴───┐┌┴┐┌──┴──┐┌──┴──┐┌──┴──┐   ┌──┴───┐
-   │Harness││E││Tool ││Expr ││Memo │   │Web   │
-   │Monitor││v││Build││Runner││ry   │   │UI    │
-   │       ││al││     ││     ││     │   │      │
-   └───────┘└──┘└─────┘└─────┘└─────┘   └──────┘
-       │             │         │             │
-   ┌───┴─────────────┴─────────┴─────────────┴───┐
-   │              OpenClaw Gateway                 │
-   │   (sessions, history, skills, tools)          │
-   └─────────────────────────────────────────────┘
+
+## Data Flow: Failure to Fix
+
+```mermaid
+flowchart TD
+    A["Agent makes a tool call"] --> B["Gateway records session"]
+    B --> C["Monitor fetches session metrics"]
+    C --> D["Scorer assigns performance score"]
+    D --> E["Pattern Detector clusters failures"]
+    E --> F{"Frequency >= 3?"}
+    F -->|"No"| G["Skip"]
+    F -->|"Yes"| H["Skill Generator creates fix"]
+    H --> I["Experiment Runner: 5 control vs 5 treatment"]
+    I --> J{"p < 0.05 AND\nimprovement >= 10%?"}
+    J -->|"Yes"| K["Deploy to ~/.openclaw/skills/"]
+    J -->|"No"| L["Rejected"]
+    K --> M["Next cycle uses the new skill"]
+
+    style F fill:#2a2a3e,stroke:#f0c040,color:#e0e0e0
+    style J fill:#2a2a3e,stroke:#f0c040,color:#e0e0e0
+    style K fill:#1a3a1a,stroke:#39d353,color:#e0e0e0
+    style L fill:#3a1a1a,stroke:#e06040,color:#e0e0e0
 ```
 
-### Components
+## Scoring
 
-| Component | Role |
-|-----------|------|
-| **Hub** | Orchestrates the evolution loop, schedules cycles |
-| **Harness** | Wraps OpenClaw agents with self-monitoring hooks |
-| **Evaluator** | Scores performance, identifies failure patterns |
-| **Tool Builder** | Generates new skills/tools from failure analysis |
-| **Experiment Runner** | A/B tests improvements against baselines |
-| **Memory** | Persistent knowledge across evolution cycles |
-| **Dashboard** | Real-time web UI for monitoring evolution |
+Sessions are scored on 5 weighted dimensions:
 
----
+| Dimension | Weight | What it measures |
+|-----------|--------|-----------------|
+| **Accuracy** | 25% | Did the agent succeed at the task? |
+| **Reliability** | 25% | Error rate (lower is better) |
+| **Efficiency** | 20% | Tool calls vs. optimal (fewer is better) |
+| **Speed** | 20% | Time to complete vs. baseline |
+| **Coverage** | 10% | % of task types handled |
 
-## How It Works
+Weights are **adaptive** — if reliability drops below threshold, its weight automatically increases.
 
-### The Self-Evolution Loop
+## A/B Experiment Flow
 
-1. **Monitor** — The harness observes every tool call, session, and error
-2. **Evaluate** — The evaluator scores performance and identifies patterns
-3. **Plan** — Identifies which failures are worth fixing
-4. **Build** — Tool builder generates new skills or fixes existing ones
-5. **Experiment** — Runs new tools against baseline in parallel sessions
-6. **Integrate** — Winning improvements are promoted to production
-7. **Repeat** — Continuous iteration
+```mermaid
+sequenceDiagram
+    participant Hub as EvoHub
+    participant Runner as Experiment Runner
+    participant GW as Gateway
+    participant Comp as Comparator
+    participant Prom as Promoter
 
-### Harness Monitor
+    Hub->>Runner: runExperiment(newSkill)
 
-The harness intercepts every OpenClaw event:
-- Tool calls and their success/failure
-- Session creation and closure
-- Error rates and latency
-- User satisfaction signals
-- Tool usage frequency and patterns
+    par Control Arm
+        loop 5 sessions
+            Runner->>GW: POST /api/sessions (baseline)
+            GW-->>Runner: result
+        end
+    and Treatment Arm
+        loop 5 sessions
+            Runner->>GW: POST /api/sessions (with skill)
+            GW-->>Runner: result
+        end
+    end
 
-### Evaluator
+    Runner->>Comp: compare(control, treatment)
+    Comp-->>Runner: z-score, p-value, improvement%
 
-Scoring dimensions:
-- **Accuracy** — Did the agent succeed?
-- **Efficiency** — How many tool calls vs. optimal?
-- **Speed** — Time to complete vs. baseline
-- **Reliability** — Error rate over time
-- **Coverage** — What % of task types are handled?
+    alt Significant improvement
+        Runner->>Prom: promote(skill)
+        Prom-->>Hub: deployed
+    else Not significant
+        Runner->>Prom: reject(skill)
+        Prom-->>Hub: rejected
+    end
+```
 
-### Tool Builder
+## CLI Commands
 
-When a failure pattern is identified:
-1. Analyzes the failure in context (what was the task? what went wrong?)
-2. Generates a new skill (SKILL.md + implementation)
-3. Validates syntax and structure
-4. Proposes it to the experiment runner
+The hub starts an interactive REPL:
 
-### Experiment Runner
+```
+$ npm run start:hub
 
-- Spawns parallel test sessions
-- New tool vs. old tool on same task
-- Measures: success rate, time, tool call count
-- Statistical significance testing
-- Only promotes if improvement is significant
+OpenClaw Evo > help
 
----
+  status         Show hub status
+  trigger        Trigger an evolution cycle now
+  skills         List proposed and deployed skills
+  approve <id>   Approve a proposed skill by id
+  logs           Show recent evolution cycle logs
+  stats          Show performance statistics
+  restart        Stop and restart the hub
+  quit           Exit the REPL
+```
 
-## Self-Evolving Capabilities
+## Configuration
 
-### Phase 1: Introspection
-- Monitor own performance continuously
-- Build failure/success corpus
-- Identify top failure patterns
+All defaults live in `src/constants.ts` and can be overridden via environment variables:
 
-### Phase 2: Tool Synthesis
-- Generate new skills from failure analysis
-- Auto-fix broken or suboptimal tools
-- Optimize existing tool chains
-
-### Phase 3: Recursive Improvement
-- Improve the harness itself
-- Optimize evaluation algorithms
-- Self-tune experiment parameters
-
-### Phase 4: Autonomous Evolution
-- Full recursive loop with minimal human oversight
-- Auto-deploy winning improvements
-- Continuous learning from production
-
----
+| Setting | Default | Env var |
+|---------|---------|---------|
+| Cycle interval | 5 min | `CYCLE_INTERVAL_MS` |
+| Failure threshold | 3 | `FAILURE_THRESHOLD` |
+| Max skills per cycle | 3 | `MAX_SKILLS_PER_CYCLE` |
+| Experiment sessions per arm | 5 | `EXPERIMENT_SESSIONS` |
+| Min improvement to deploy | 10% | `MIN_IMPROVEMENT_PCT` |
+| Statistical confidence | 95% | `STATISTICAL_CONFIDENCE` |
+| Gateway URL | `http://localhost:18789` | `OPENCLAW_GATEWAY_URL` |
+| Poll interval | 10s | `OPENCLAW_POLL_INTERVAL_MS` |
+| Skill output dir | `~/.openclaw/skills/` | `SKILL_OUTPUT_DIR` |
+| Memory dir | `~/.openclaw/evo-memory/` | `MEMORY_DIR` |
+| Dashboard port | 5174 | `DASHBOARD_PORT` |
 
 ## Repository Structure
 
 ```
 openclaw-evo/
 ├── src/
-│   ├── hub.ts                    # Main orchestration
+│   ├── hub.ts                  # EvoHub — main orchestrator
+│   ├── cli.ts                  # Interactive REPL entry point
+│   ├── server.ts               # HTTP API server (port 5174)
+│   ├── types.ts                # Shared TypeScript interfaces
+│   ├── constants.ts            # Default configuration
 │   ├── harness/
-│   │   ├── monitor.ts            # Event interception
-│   │   ├── sessionTracker.ts     # Session lifecycle tracking
-│   │   └── toolAnalyzer.ts       # Tool call analysis
+│   │   ├── monitor.ts          # Gateway event monitoring
+│   │   ├── sessionTracker.ts   # Per-session lifecycle tracking
+│   │   └── toolAnalyzer.ts     # Tool call pattern analysis
 │   ├── evaluator/
-│   │   ├── scorer.ts             # Performance scoring
-│   │   ├── patternDetector.ts     # Failure pattern detection
-│   │   └── reportGenerator.ts    # Evaluation reports
+│   │   ├── scorer.ts           # Multi-dimensional performance scoring
+│   │   ├── patternDetector.ts  # Failure pattern clustering
+│   │   └── reportGenerator.ts  # Evaluation report assembly
 │   ├── builder/
-│   │   ├── skillGenerator.ts     # Generate new skills
-│   │   ├── skillValidator.ts      # Validate skill structure
-│   │   └── templateLibrary.ts     # Skill templates
+│   │   ├── skillGenerator.ts   # Generate skills from failures
+│   │   ├── skillValidator.ts   # Structural validation
+│   │   └── templateLibrary.ts  # Parameterized skill templates
 │   ├── experiment/
-│   │   ├── runner.ts             # A/B experiment runner
-│   │   ├── comparator.ts          # Compare results statistically
-│   │   └── promoter.ts            # Promote winning improvements
+│   │   ├── runner.ts           # A/B test session spawning
+│   │   ├── comparator.ts       # Two-proportion z-test
+│   │   └── promoter.ts         # Promotion/rejection logic
 │   ├── memory/
-│   │   ├── store.ts               # Persistent memory store
-│   │   ├── failureCorpus.ts       # Known failures database
-│   │   └── improvementLog.ts      # Evolution history
-│   ├── openclaw/
-│   │   ├── gateway.ts             # OpenClaw gateway client
-│   │   ├── sessionManager.ts       # Session CRUD
-│   │   └── skillManager.ts         # Skill installation
-│   ├── types.ts                   # Shared TypeScript types
-│   └── constants.ts               # Configuration constants
+│   │   ├── store.ts            # JSON file persistence
+│   │   ├── failureCorpus.ts    # Recurring failure database
+│   │   └── improvementLog.ts   # Audit trail of all changes
+│   └── openclaw/
+│       ├── gateway.ts          # OpenClaw gateway HTTP client
+│       ├── sessionManager.ts   # Session CRUD
+│       └── skillManager.ts     # Skill deployment
 ├── dashboard/
-│   ├── index.html
-│   ├── src/
-│   │   ├── App.tsx               # Dashboard React app
-│   │   ├── components/
-│   │   │   ├── EvolutionDashboard.tsx
-│   │   │   ├── PerformanceChart.tsx
-│   │   │   ├── FailurePatterns.tsx
-│   │   │   ├── ExperimentMonitor.tsx
-│   │   │   └── SkillBuilder.tsx
-│   │   └── api/
-│   │       └── evoClient.ts
-│   └── vite.config.ts
+│   └── src/
+│       ├── App.tsx             # React dashboard UI
+│       └── api/
+│           └── evoClient.ts    # Dashboard API client
+├── docs/
+│   ├── ARCHITECTURE.md         # Detailed architecture docs
+│   ├── DIAGRAM.md              # Full Mermaid diagrams
+│   ├── API.md                  # HTTP API reference
+│   ├── CONFIGURATION.md        # Config deep dive
+│   ├── SELF_IMPROVEMENT.md     # How recursive improvement works
+│   ├── ADDING_TEMPLATES.md     # How to add skill templates
+│   ├── EXAMPLES.md             # Usage examples
+│   └── TROUBLESHOOTING.md      # Common issues
 ├── tests/
 │   ├── harness.test.ts
 │   ├── evaluator.test.ts
@@ -212,135 +295,34 @@ openclaw-evo/
 │   └── experiment.test.ts
 ├── package.json
 ├── tsconfig.json
-├── README.md
-└── LICENSE
+└── vitest.config.ts
 ```
 
----
+## Dashboard
 
-## Getting Started
+The web dashboard at `http://localhost:5174` shows real-time evolution status:
 
-### Prerequisites
+- **Performance scores** — Overall health with sparkline trend
+- **Failure patterns** — Top failures ranked by frequency, color-coded by severity
+- **Proposed skills** — Generated fixes with approve/reject buttons
+- **Active experiments** — Live A/B test results with statistical significance
+- **Cycle history** — Recent evolution cycles with phase breakdowns
+- **Improvement log** — Audit trail of all deployed changes
+
+## Prerequisites
+
 - Node.js 20+
 - OpenClaw gateway running (`openclaw gateway start`)
-
-### Installation
-
-```bash
-git clone https://github.com/DevvGwardo/openclaw-evo.git
-cd openclaw-evo
-npm install
-```
-
-### Running the Dashboard
-
-```bash
-npm run dev:dashboard
-# → Open http://localhost:5174
-```
-
-### Starting the Evolution Hub
-
-```bash
-npm run start:hub
-# Starts the self-evolution loop
-```
-
-### Quick Test
-
-```bash
-npm run test          # Run all tests
-npm run build         # Build TypeScript
-npm run evolve:once   # Run one evolution cycle
-```
-
----
-
-## Dashboard Features
-
-- **Real-time performance metrics** — Tool success rates, latency, error trends
-- **Failure pattern analysis** — Top failure categories ranked by frequency
-- **Evolution progress** — Current cycle, experiments running, improvements deployed
-- **Tool Builder** — See proposed new skills, approve/reject
-- **Memory viewer** — Browse the failure corpus and improvement history
-- **Experiment monitor** — Live A/B test results
-
----
-
-## Configuration
-
-```typescript
-// src/config.ts
-export const EVOLUTION_CONFIG = {
-  // How often to run evolution cycles (ms)
-  CYCLE_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes
-
-  // Minimum failures before triggering tool generation
-  FAILURE_THRESHOLD: 5,
-
-  // Experiment: how many test sessions to run
-  EXPERIMENT_SESSIONS: 5,
-
-  // Minimum improvement to promote (%)
-  MIN_IMPROVEMENT_PCT: 10,
-
-  // Max new skills per cycle
-  MAX_SKILLS_PER_CYCLE: 3,
-
-  // Confidence threshold for statistical significance
-  STATISTICAL_CONFIDENCE: 0.95,
-};
-```
-
----
-
-## Roadmap
-
-### v0.1 — Foundation
-- [x] Repository setup
-- [x] Type system and interfaces
-- [x] OpenClaw gateway client
-- [x] Basic harness monitor
-- [x] Dashboard skeleton
-
-### v0.2 — Evaluation
-- [x] Performance scoring
-- [x] Failure pattern detection
-- [x] Evaluation reports
-
-### v0.3 — Tool Synthesis
-- [x] Skill template library
-- [x] Skill generator (rule-based)
-- [x] Skill validator
-
-### v0.4 — Experimentation
-- [x] A/B experiment runner
-- [x] Statistical comparator
-- [x] Improvement promoter
-
-### v0.5 — Recursive Loop
-- [x] Full evolution loop orchestration
-- [x] Memory persistence
-- [x] Auto-deployment
-
-### v1.0 — Autonomous
-- [x] Self-tuning evaluation algorithms
-- [x] Self-improving harness
-- [x] Minimal human oversight
-
----
 
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Key areas for contribution:
-- Tool builder: better skill generation algorithms
-- Evaluator: more sophisticated scoring models
-- Experiment runner: better statistical methods
-- Dashboard: better visualizations
-
----
+Key areas:
+- **Builder**: Better skill generation algorithms
+- **Evaluator**: More sophisticated scoring models
+- **Experiment**: Better statistical methods
+- **Dashboard**: Better visualizations
 
 ## License
 

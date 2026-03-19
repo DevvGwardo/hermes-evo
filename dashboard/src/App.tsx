@@ -72,7 +72,7 @@ const s = {
   } as React.CSSProperties),
   btn: (variant: 'approve' | 'reject') => ({
     padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-    cursor: 'pointer', border: 'none', letterSpacing: 0.3,
+    cursor: 'pointer', letterSpacing: 0.3,
     background: variant === 'approve' ? `${C.green}22` : `${C.red}22`,
     color: variant === 'approve' ? C.green : C.red,
     border: `1px solid ${variant === 'approve' ? C.green : C.red}44`,
