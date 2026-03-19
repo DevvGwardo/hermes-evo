@@ -52,7 +52,7 @@ export const DEFAULT_WATCHDOG_CONFIG: WatchdogConfig = {
   restartCooldownMs: envInt('WATCHDOG_RESTART_COOLDOWN_MS', 60_000),
   maxRestarts:       envInt('WATCHDOG_MAX_RESTARTS', 10),
   restartCommand:    process.env.WATCHDOG_RESTART_CMD ?? 'openclaw',
-  restartArgs:       (process.env.WATCHDOG_RESTART_ARGS ?? 'gateway start').split(' '),
+  restartArgs:       (process.env.WATCHDOG_RESTART_ARGS ?? 'gateway install').split(' '),
   enabled:           envBool('WATCHDOG_ENABLED', true),
 };
 
@@ -86,6 +86,7 @@ export class GatewayWatchdog {
   private lastRestartAt = 0;
   private inCooldown = false;
   private gatewayUp = true;
+  private gaveUp = false;
 
   constructor(config: Partial<WatchdogConfig> = {}) {
     this.config = { ...DEFAULT_WATCHDOG_CONFIG, ...config };
@@ -156,6 +157,11 @@ export class GatewayWatchdog {
         }
         this.gatewayUp = true;
         this.consecutiveFailures = 0;
+        // Reset restart counter so watchdog can protect again in the future
+        if (this.gaveUp || this.totalRestarts > 0) {
+          this.totalRestarts = 0;
+          this.gaveUp = false;
+        }
         this.emit({ type: 'health_ok', version: status.version });
         return;
       }
@@ -167,6 +173,9 @@ export class GatewayWatchdog {
     this.gatewayUp = false;
     this.consecutiveFailures++;
     this.emit({ type: 'health_fail', consecutiveFailures: this.consecutiveFailures });
+
+    // Don't spam logs after we've given up
+    if (this.gaveUp) return;
 
     if (this.consecutiveFailures === 1) {
       console.warn(`[Watchdog] Gateway health check failed (1/${this.config.failureThreshold})`);
@@ -187,11 +196,14 @@ export class GatewayWatchdog {
   private async attemptRestart(): Promise<void> {
     // Check max restarts
     if (this.config.maxRestarts > 0 && this.totalRestarts >= this.config.maxRestarts) {
-      console.error(
-        `[Watchdog] Reached max restart attempts (${this.config.maxRestarts}). ` +
-        `Manual intervention required.`
-      );
-      this.emit({ type: 'max_restarts', total: this.totalRestarts });
+      if (!this.gaveUp) {
+        console.error(
+          `[Watchdog] Reached max restart attempts (${this.config.maxRestarts}). ` +
+          `Manual intervention required. Will resume if gateway comes back.`
+        );
+        this.emit({ type: 'max_restarts', total: this.totalRestarts });
+        this.gaveUp = true;
+      }
       return;
     }
 
