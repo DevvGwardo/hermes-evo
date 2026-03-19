@@ -108,8 +108,17 @@ export class Gateway {
 
   async getStatus(): Promise<{ connected: boolean; version?: string }> {
     try {
-      const resp = await this.request('gateway_status', {});
-      return { connected: true, version: (resp.result as { version?: string })?.version };
+      // Simple HTTP GET to the gateway root — the gateway doesn't expose
+      // a gateway_status tool, so we just check if it responds at all.
+      const headers: Record<string, string> = {};
+      const token = getGatewayToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(this.baseUrl, {
+        headers,
+        signal: AbortSignal.timeout(5000),
+      });
+      return { connected: res.ok || res.status < 500 };
     } catch {
       return { connected: false };
     }
