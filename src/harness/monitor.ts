@@ -4,6 +4,7 @@
  * Emits structured HarnessEvent objects for the hub to process.
  */
 
+import { WebSocket } from 'ws';
 import type {
   HarnessEvent,
   ToolLifecycle,
@@ -17,6 +18,7 @@ export type OpenClawEventHook = (data: unknown) => void;
 
 interface MonitorConfig {
   gatewayUrl: string;
+  gatewayToken: string;
   pollIntervalMs: number;
   idleThresholdMs: number;
   onEvent?: HarnessListener;
@@ -57,20 +59,72 @@ function toHarnessEvent(
   };
 }
 
+// ── WebSocket protocol helpers ─────────────────────────────────────────────────
+
+const GATEWAY_PROTOCOL_VERSION = 3;
+
+// Frame types from the gateway protocol
+type FrameType = 'req' | 'res' | 'evt';
+type EventName = 'connect.challenge' | 'tick' | 'chat' | 'agent' | 'session.update' | 'btw';
+
+interface WsFrame {
+  type: FrameType;
+  id?: string;
+  method?: string;
+  params?: Record<string, unknown>;
+  event?: string;
+  payload?: unknown;
+  ok?: boolean;
+  error?: { message: string };
+}
+
+interface ChallengePayload {
+  nonce: string;
+  ts: number;
+}
+
+interface TickPayload {
+  interval?: number;
+}
+
+interface ChatPayload {
+  sessionKey?: string;
+  state?: string;
+  message?: { role?: string; content?: string };
+  runId?: string;
+}
+
+interface AgentPayload {
+  sessionKey?: string;
+  type?: string;
+  message?: { role?: string; content?: unknown };
+}
+
+interface SessionUpdatePayload {
+  sessionKey?: string;
+  state?: string;
+  [key: string]: unknown;
+}
+
+// ── HarnessMonitor ─────────────────────────────────────────────────────────────
+
 /**
  * HarnessMonitor
  *
- * Connects to the OpenClaw gateway and wraps its event hooks with
- * self-monitoring: deduplication, latency tracking, and structured
- * event emission for downstream consumers (evaluator, session tracker, etc.).
+ * Connects to the OpenClaw gateway via WebSocket and wraps its event hooks
+ * with self-monitoring: deduplication, latency tracking, and structured event
+ * emission for downstream consumers (evaluator, session tracker, etc.).
  */
 export class HarnessMonitor {
   private readonly config: MonitorConfig;
   private readonly listeners = new Set<HarnessListener>();
   private readonly eventBuffer = new Map<string, HarnessEvent[]>();
-  private pollTimer?: ReturnType<typeof setInterval>;
   private abortController?: AbortController;
   private isRunning = false;
+  private ws?: WebSocket;
+  private wsBackoff = 0;
+  private readonly maxBackoffSecs = 30;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
 
   /** Tracks the last event timestamp per session to detect stalls */
   private readonly lastEventPerSession = new Map<string, number>();
@@ -83,6 +137,7 @@ export class HarnessMonitor {
 
     this.config = {
       gatewayUrl: config.gatewayUrl ?? 'http://localhost:18789',
+      gatewayToken: config.gatewayToken ?? process.env.OPENCLAW_GATEWAY_TOKEN ?? '',
       pollIntervalMs: config.pollIntervalMs ?? saved.pollIntervalMs,
       idleThresholdMs: saved.idleThresholdMs,
       onEvent: config.onEvent,
@@ -95,7 +150,7 @@ export class HarnessMonitor {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /** Start polling the OpenClaw gateway for events */
+  /** Start the WebSocket connection to the OpenClaw gateway */
   start(): void {
     if (this.isRunning) {
       console.log('[HarnessMonitor] Already running, ignoring start()');
@@ -106,22 +161,21 @@ export class HarnessMonitor {
     this.abortController = new AbortController();
 
     console.log(
-      `[HarnessMonitor] Starting — gateway: ${this.config.gatewayUrl}, poll interval: ${this.config.pollIntervalMs}ms, idle threshold: ${this.config.idleThresholdMs}ms`
+      `[HarnessMonitor] Starting — gateway: ${this.config.gatewayUrl}, ` +
+        `idle threshold: ${this.config.idleThresholdMs}ms`
     );
 
-    this.pollLoop().catch((err) => {
-      console.error('[HarnessMonitor] Poll loop fatal error:', err);
-      this.isRunning = false;
-    });
+    this.scheduleReconnect(0);
   }
 
-  /** Stop polling and clean up */
+  /** Stop the monitor and close the WebSocket connection */
   stop(): void {
     if (!this.isRunning) return;
 
     console.log('[HarnessMonitor] Stopping');
     this.abortController?.abort();
-    clearInterval(this.pollTimer);
+    clearTimeout(this.reconnectTimer);
+    this.ws?.close();
     this.isRunning = false;
   }
 
@@ -155,91 +209,262 @@ export class HarnessMonitor {
     return Object.fromEntries(this.eventCounts);
   }
 
-  // ── Internal ──────────────────────────────────────────────────────────────
+  // ── WebSocket lifecycle ───────────────────────────────────────────────────
 
-  private async pollLoop(): Promise<void> {
-    while (!this.abortController?.signal.aborted) {
-      await this.safeSleep(this.config.pollIntervalMs);
-      if (this.abortController?.signal.aborted) break;
-      this.checkIdleSessions();
-      await this.pollGateway();
-    }
+  private scheduleReconnect(delayMs: number): void {
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => {
+      if (!this.isRunning || this.abortController?.signal.aborted) return;
+      this.connectWs();
+    }, delayMs);
   }
 
-  /** Warn about sessions that have been silent longer than idleThresholdMs */
-  private checkIdleSessions(): void {
-    const now = Date.now();
-    for (const [sessionId, lastTs] of this.lastEventPerSession) {
-      const idleMs = now - lastTs;
-      if (idleMs > this.config.idleThresholdMs) {
-        console.warn(
-          `[HarnessMonitor] Session "${sessionId}" has been idle for ${Math.round(idleMs / 1000)}s ` +
-            `(threshold: ${this.config.idleThresholdMs}ms)`
-        );
-      }
-    }
+  private buildWsUrl(): string {
+    const url = this.config.gatewayUrl;
+    // Support both http:// and https:// — convert to ws:// / wss://
+    return url.replace(/^http/, 'ws');
   }
 
-  private async pollGateway(): Promise<void> {
+  private connectWs(): void {
+    if (!this.isRunning || this.abortController?.signal.aborted) return;
+
+    const wsUrl = this.buildWsUrl();
+    console.log(`[HarnessMonitor] Connecting to gateway at ${wsUrl}…`);
+
     try {
-      const url = `${this.config.gatewayUrl}/events`;
-      const response = await fetch(url, {
-        signal: this.abortController?.signal,
-        headers: { Accept: 'application/json' },
-      });
-
-      if (!response.ok) {
-        console.warn(
-          `[HarnessMonitor] Gateway returned ${response.status} — will retry`
-        );
-        return;
-      }
-
-      const rawEvents = (await response.json()) as RawGatewayEvent[];
-      await this.processRawEvents(rawEvents);
+      this.ws = new WebSocket(wsUrl);
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      console.error('[HarnessMonitor] Failed to poll gateway:', err);
+      console.error('[HarnessMonitor] WebSocket constructor failed:', err);
+      this.handleDisconnect(err as Error);
+      return;
+    }
+
+    this.ws.onerror = (event) => {
+      console.error('[HarnessMonitor] WebSocket error:', event.message);
+    };
+
+    this.ws.onclose = (event) => {
+      if (!this.isRunning || this.abortController?.signal.aborted) return;
+      console.warn(`[HarnessMonitor] WebSocket closed (code=${event.code}), reconnecting…`);
+      this.handleDisconnect(new Error(`WebSocket closed ${event.code}`));
+    };
+
+    this.ws.onmessage = (msg) => {
+      void this.handleWsMessage(msg.data);
+    };
+  }
+
+  private async handleWsMessage(rawData: unknown): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    let frame: WsFrame;
+    try {
+      frame = JSON.parse(rawData as string) as WsFrame;
+    } catch {
+      console.warn('[HarnessMonitor] Received non-JSON frame, ignoring:', rawData);
+      return;
+    }
+
+    if (frame.type === 'evt') {
+      await this.handleGatewayEvent(frame);
+    } else if (frame.type === 'res' && frame.ok === false) {
+      console.error('[HarnessMonitor] Gateway error response:', frame.error?.message);
     }
   }
 
-  private async processRawEvents(rawEvents: RawGatewayEvent[]): Promise<void> {
-    for (const raw of rawEvents) {
-      try {
-        const event = toHarnessEvent(raw.type, raw.sessionId ?? 'unknown', raw.data);
+  private async handleGatewayEvent(frame: WsFrame): Promise<void> {
+    const event = frame.event as EventName | string;
+    const payload = frame.payload as
+      | ChallengePayload
+      | TickPayload
+      | ChatPayload
+      | AgentPayload
+      | SessionUpdatePayload
+      | undefined;
 
-        // Update self-monitoring state
-        this.incrementCounter(event.type);
-        this.lastEventPerSession.set(
-          event.sessionId,
-          Date.now()
-        );
+    switch (event) {
+      case 'connect.challenge': {
+        await this.sendConnectRequest((payload as ChallengePayload).nonce);
+        break;
+      }
 
-        // Buffer for session consumers
-        const buffered = this.eventBuffer.get(event.sessionId) ?? [];
-        buffered.push(event);
-        this.eventBuffer.set(event.sessionId, buffered);
+      case 'tick': {
+        if ((payload as TickPayload)?.interval) {
+          // Gateway tick — used as a heartbeat signal
+          const sessionKey = 'gateway';
+          this.emitEvent(toHarnessEvent('heartbeat', sessionKey, payload));
+        }
+        break;
+      }
 
-        // Emit to all listeners
-        for (const listener of this.listeners) {
-          try {
-            listener(event);
-          } catch (err) {
-            console.error('[HarnessMonitor] Listener threw:', err);
+      case 'session.update': {
+        const p = payload as SessionUpdatePayload;
+        if (!p?.sessionKey) break;
+        const state = p.state?.toLowerCase() ?? '';
+        if (state === 'starting' || state === 'start') {
+          this.emitEvent(toHarnessEvent('session_start', p.sessionKey, p));
+        } else if (state === 'ended' || state === 'end' || state === 'done') {
+          this.emitEvent(toHarnessEvent('session_end', p.sessionKey, p));
+        }
+        break;
+      }
+
+      case 'chat': {
+        // Chat events carry sessionKey and run state
+        const p = payload as ChatPayload;
+        if (!p?.sessionKey) break;
+        if (p.state === 'delta' || p.state === 'final') {
+          // Check if the message contains tool calls
+          const msg = p.message as { role?: string; content?: unknown } | undefined;
+          if (msg?.content) {
+            const content = msg.content;
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                const block2 = block as { type?: string; name?: string; input?: unknown };
+                if (block2.type === 'tool_use') {
+                  this.emitEvent(toHarnessEvent('tool_call', p.sessionKey, {
+                    tool: block2.name,
+                    input: block2.input,
+                    runId: p.runId,
+                  }));
+                }
+              }
+            }
           }
         }
+        break;
+      }
+
+      case 'agent': {
+        // Agent events can signal tool usage/results
+        const p = payload as AgentPayload;
+        if (!p?.sessionKey) break;
+        const msg = p.message as { role?: string; content?: unknown } | undefined;
+        if (msg?.content) {
+          const content = msg.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              const block2 = block as { type?: string; name?: string; input?: unknown };
+              if (block2.type === 'tool_use') {
+                this.emitEvent(toHarnessEvent('tool_call', p.sessionKey, {
+                  tool: block2.name,
+                  input: block2.input,
+                }));
+              } else if (block2.type === 'tool_result') {
+                this.emitEvent(toHarnessEvent('tool_result', p.sessionKey, {
+                  tool: block2.name,
+                  output: block2.input, // tool_result block has result in input field
+                }));
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      default:
+        // Emit unknown events as generic error events for debugging
+        if (event && !event.startsWith('btw')) {
+          console.debug(`[HarnessMonitor] Unknown gateway event: ${event}`);
+        }
+    }
+  }
+
+  private async sendConnectRequest(nonce: string): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    // Read device identity for signed auth if available
+    let device: Record<string, unknown> | undefined;
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const homedir = process.env.HOME ?? '';
+      const authPath = path.join(homedir, '.openclaw', 'identity', 'device-auth.json');
+      const authData = JSON.parse(await fs.readFile(authPath, 'utf-8'));
+      const operatorToken = authData?.tokens?.operator?.token;
+      if (operatorToken && nonce) {
+        // Build a minimal device identity from the stored key
+        device = {
+          id: authData.deviceId,
+          nonce,
+          signedAt: Date.now(),
+        };
+        // Token for auth
+        if (!this.config.gatewayToken && operatorToken) {
+          this.config.gatewayToken = operatorToken;
+        }
+      }
+    } catch {
+      // No device auth file — continue without device identity
+    }
+
+    const connectFrame: WsFrame = {
+      type: 'req',
+      id: crypto.randomUUID(),
+      method: 'connect',
+      params: {
+        minProtocol: GATEWAY_PROTOCOL_VERSION,
+        maxProtocol: GATEWAY_PROTOCOL_VERSION,
+        client: {
+          id: 'evo-monitor',
+          displayName: 'OpenClaw Evo Monitor',
+          version: '1.0.0',
+          platform: process.platform,
+          mode: 'backend',
+        },
+        caps: [],
+        auth: {
+          token: this.config.gatewayToken || undefined,
+        },
+        role: 'operator',
+        scopes: ['operator.admin'],
+        device,
+      },
+    };
+
+    this.ws.send(JSON.stringify(connectFrame));
+  }
+
+  private handleDisconnect(err: Error): void {
+    if (!this.isRunning || this.abortController?.signal.aborted) return;
+
+    const delayMs = Math.min(
+      1000 * Math.pow(2, this.wsBackoff),
+      this.maxBackoffSecs * 1000,
+    );
+    this.wsBackoff = Math.min(this.wsBackoff + 1, this.maxBackoffSecs);
+
+    console.warn(
+      `[HarnessMonitor] Reconnecting in ${Math.round(delayMs / 1000)}s ` +
+        `(attempt ${this.wsBackoff}) after: ${err.message}`
+    );
+
+    this.scheduleReconnect(delayMs);
+  }
+
+  // ── Event emission ────────────────────────────────────────────────────────
+
+  private emitEvent(event: HarnessEvent): void {
+    // Update idle tracking
+    this.lastEventPerSession.set(event.sessionId, Date.now());
+
+    // Buffer for session consumers
+    const buffered = this.eventBuffer.get(event.sessionId) ?? [];
+    buffered.push(event);
+    this.eventBuffer.set(event.sessionId, buffered);
+
+    // Emit to all listeners
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
       } catch (err) {
-        console.error('[HarnessMonitor] Failed to process raw event:', err);
+        console.error('[HarnessMonitor] Listener threw:', err);
       }
     }
   }
 
   private incrementCounter(type: string): void {
     this.eventCounts.set(type, (this.eventCounts.get(type) ?? 0) + 1);
-  }
-
-  private safeSleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
