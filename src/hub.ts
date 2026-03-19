@@ -174,7 +174,8 @@ export class EvoHub {
     this.activeExperiments = new Map(
       (state.activeExperiments ?? []).map((e) => [e.id, e]),
     );
-    this.running = false;
+    // NOTE: don't touch this.running here — resume() fires from the constructor
+    // as fire-and-forget, so it can race with start() which sets running = true.
     this.log('info', `✓ Resumed from checkpoint — cycle #${this.cycleNumber}, ${this.completedCycles.length} cycles completed`);
   }
 

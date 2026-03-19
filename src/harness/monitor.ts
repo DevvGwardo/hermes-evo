@@ -150,7 +150,7 @@ export class HarnessMonitor {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /** Start the WebSocket connection to the OpenClaw gateway */
+  /** Start the monitor (passive mode — no WebSocket) */
   start(): void {
     if (this.isRunning) {
       console.log('[HarnessMonitor] Already running, ignoring start()');
@@ -161,11 +161,17 @@ export class HarnessMonitor {
     this.abortController = new AbortController();
 
     console.log(
-      `[HarnessMonitor] Starting — gateway: ${this.config.gatewayUrl}, ` +
+      `[HarnessMonitor] Starting (passive) — gateway: ${this.config.gatewayUrl}, ` +
         `idle threshold: ${this.config.idleThresholdMs}ms`
     );
 
-    this.scheduleReconnect(0);
+    // NOTE: WebSocket connections disabled — the gateway doesn't expose a /ws
+    // endpoint, so connections close immediately (code 1000) and crash the
+    // process.  The evolution cycle fetches sessions via HTTP directly.
+    // Re-enable with USE_WS=true if the gateway adds WebSocket support.
+    if (process.env.USE_WS === 'true') {
+      this.connectWs();
+    }
   }
 
   /** Stop the monitor and close the WebSocket connection */
@@ -239,7 +245,13 @@ export class HarnessMonitor {
       return;
     }
 
+    this.ws.onopen = () => {
+      console.log('[HarnessMonitor] WebSocket connected');
+      this.wsBackoff = 0;
+    };
+
     this.ws.onerror = (event) => {
+      // Log but don't throw — onclose handles reconnection
       console.error('[HarnessMonitor] WebSocket error:', event.message);
     };
 
