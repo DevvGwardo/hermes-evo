@@ -207,9 +207,9 @@ describe('scorer.ts — scoreSessions()', () => {
       expect(calcEfficiency(sessions, 3)).toBe(100); // ratio = 3/1 = 3 → capped
     });
 
-    it('penalizes using more calls than optimal', () => {
-      const sessions = [makeSession({ totalToolCalls: 6 })];
-      // ratio = 3/6 = 0.5 → 50
+    it('penalizes sessions with failed tool calls', () => {
+      const sessions = [makeSession({ totalToolCalls: 6, errorCount: 3 })];
+      // 3 successful out of 6 total = 50%
       expect(calcEfficiency(sessions, 3)).toBe(50);
     });
 
