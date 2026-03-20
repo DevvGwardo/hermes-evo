@@ -99,13 +99,26 @@ import type { ToolCall } from './types.js';
 
 /**
  * Extract structured ToolCall[] from gateway session history messages.
- * Pairs tool_use blocks (from assistant messages) with their corresponding
- * tool_result blocks (from user messages) by matching tool_use_id.
+ * Handles both Anthropic format (tool_use/tool_result content blocks)
+ * and OpenAI format (tool_calls array + role:"tool" messages).
  */
 export function extractToolCallsFromHistory(
   messages: Record<string, unknown>[],
   sessionStartTime: number,
 ): ToolCall[] {
+  // Try Anthropic format first, fall back to OpenAI format
+  const anthropic = extractAnthropic(messages, sessionStartTime);
+  if (anthropic.length > 0) return anthropic;
+
+  const openai = extractOpenAI(messages, sessionStartTime);
+  if (openai.length > 0) return openai;
+
+  // Last resort: scan for any structured tool data in message metadata
+  return extractFromMetadata(messages, sessionStartTime);
+}
+
+/** Anthropic format: tool_use/tool_result content blocks */
+function extractAnthropic(messages: Record<string, unknown>[], sessionStartTime: number): ToolCall[] {
   const toolCalls: ToolCall[] = [];
 
   // Index tool_result blocks by tool_use_id for pairing
@@ -123,7 +136,6 @@ export function extractToolCallsFromHistory(
     }
   }
 
-  // Extract tool_use blocks from assistant messages and pair with results
   let callIndex = 0;
   for (const msg of messages) {
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -138,7 +150,6 @@ export function extractToolCallsFromHistory(
               : JSON.stringify(result.content)
             : undefined;
 
-          // Approximate timestamps from message ordering
           const startTime = sessionStartTime + callIndex * 1000;
           const endTime = result != null ? startTime + 500 : undefined;
 
@@ -155,6 +166,93 @@ export function extractToolCallsFromHistory(
           callIndex++;
         }
       }
+    }
+  }
+
+  return toolCalls;
+}
+
+/** OpenAI format: tool_calls array on assistant + role:"tool" messages */
+function extractOpenAI(messages: Record<string, unknown>[], sessionStartTime: number): ToolCall[] {
+  const toolCalls: ToolCall[] = [];
+
+  // Index tool results by tool_call_id
+  const resultMap = new Map<string, { content?: unknown; isError?: boolean }>();
+  for (const msg of messages) {
+    if (msg.role === 'tool' && typeof msg.tool_call_id === 'string') {
+      const content = msg.content;
+      const isError = typeof content === 'string' && content.toLowerCase().includes('error');
+      resultMap.set(msg.tool_call_id as string, { content, isError });
+    }
+  }
+
+  let callIndex = 0;
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls as Array<Record<string, unknown>>) {
+        const id = typeof tc.id === 'string' ? tc.id : `tool-${callIndex}`;
+        const fn = tc.function as Record<string, unknown> | undefined;
+        const name = (fn?.name as string) ?? (tc.name as string) ?? 'unknown';
+        let input: Record<string, unknown> = {};
+        if (typeof fn?.arguments === 'string') {
+          try { input = JSON.parse(fn.arguments); } catch { /* ignore */ }
+        } else if (typeof fn?.arguments === 'object' && fn?.arguments != null) {
+          input = fn.arguments as Record<string, unknown>;
+        }
+
+        const result = resultMap.get(id);
+        const hasError = result?.isError === true;
+        const errorStr = hasError && result?.content != null
+          ? typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
+          : undefined;
+
+        const startTime = sessionStartTime + callIndex * 1000;
+        const endTime = result != null ? startTime + 500 : undefined;
+
+        toolCalls.push({
+          id,
+          name,
+          input,
+          output: hasError ? undefined : result?.content,
+          error: errorStr,
+          startTime,
+          endTime,
+          success: result != null ? !hasError : true,
+        });
+        callIndex++;
+      }
+    }
+  }
+
+  return toolCalls;
+}
+
+/** Fallback: scan message metadata for tool call info (e.g. toolName, tool_name fields) */
+function extractFromMetadata(messages: Record<string, unknown>[], sessionStartTime: number): ToolCall[] {
+  const toolCalls: ToolCall[] = [];
+  let callIndex = 0;
+
+  for (const msg of messages) {
+    // Some gateways store tool info as top-level fields on the message
+    const toolName = (msg.toolName ?? msg.tool_name ?? msg.name) as string | undefined;
+    if (toolName && msg.role !== 'user' && msg.role !== 'system') {
+      const isError = msg.error != null || msg.is_error === true;
+      const errorStr = isError
+        ? typeof msg.error === 'string' ? msg.error : JSON.stringify(msg.error)
+        : undefined;
+
+      const startTime = sessionStartTime + callIndex * 1000;
+      toolCalls.push({
+        id: (msg.id as string) ?? `tool-${callIndex}`,
+        name: toolName,
+        input: (msg.input as Record<string, unknown>) ?? {},
+        output: msg.output ?? msg.result,
+        error: errorStr,
+        startTime,
+        endTime: startTime + 500,
+        success: !isError,
+      });
+      callIndex++;
     }
   }
 
