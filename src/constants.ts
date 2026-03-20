@@ -21,16 +21,16 @@ export const DEFAULT_WEIGHTS = {
 // ── Main config ───────────────────────────────────────────────────────────────
 
 export const DEFAULT_CONFIG: EvoConfig = {
-  CYCLE_INTERVAL_MS:        envInt('EVO_CYCLE_INTERVAL_MS',        60 * 1000),
-  FAILURE_THRESHOLD:        envInt('EVO_FAILURE_THRESHOLD',         1),
-  MAX_SKILLS_PER_CYCLE:     envInt('EVO_MAX_SKILLS_PER_CYCLE',     5),
-  EXPERIMENT_SESSIONS:      envInt('EVO_EXPERIMENT_SESSIONS',      2),
-  MIN_IMPROVEMENT_PCT:       envInt('EVO_MIN_IMPROVEMENT_PCT',     5),
-  STATISTICAL_CONFIDENCE:   envFloat('EVO_STATISTICAL_CONFIDENCE', 0.80),
-  OPENCLAW_GATEWAY_URL:     env('OPENCLAW_GATEWAY_URL',            'http://localhost:18789'),
-  OPENCLAW_POLL_INTERVAL_MS: envInt('OPENCLAW_POLL_INTERVAL_MS',   10000),
-  SKILL_OUTPUT_DIR:         env('EVO_SKILL_OUTPUT_DIR',            '~/.openclaw/skills/'),
-  SKILL_TEMPLATE_DIR:       env('EVO_SKILL_TEMPLATE_DIR',          './templates/'),
-  MEMORY_DIR:               env('EVO_MEMORY_DIR',                  '~/.openclaw/evo-memory/'),
-  DASHBOARD_PORT:           envInt('EVO_DASHBOARD_PORT',           5174),
+  CYCLE_INTERVAL_MS:        envInt('CYCLE_INTERVAL_MS',        5 * 60 * 1000),
+  FAILURE_THRESHOLD:        envInt('FAILURE_THRESHOLD',         3),
+  MAX_SKILLS_PER_CYCLE:     envInt('MAX_SKILLS_PER_CYCLE',     3),
+  EXPERIMENT_SESSIONS:      envInt('EXPERIMENT_SESSIONS',      5),
+  MIN_IMPROVEMENT_PCT:       envInt('MIN_IMPROVEMENT_PCT',     10),
+  STATISTICAL_CONFIDENCE:   envFloat('STATISTICAL_CONFIDENCE', 0.95),
+  OPENCLAW_GATEWAY_URL:     env('OPENCLAW_GATEWAY_URL',       'http://localhost:18789'),
+  OPENCLAW_POLL_INTERVAL_MS: envInt('OPENCLAW_POLL_INTERVAL_MS', 10000),
+  SKILL_OUTPUT_DIR:         env('SKILL_OUTPUT_DIR',            '~/.openclaw/skills/'),
+  SKILL_TEMPLATE_DIR:       env('SKILL_TEMPLATE_DIR',          './templates/'),
+  MEMORY_DIR:               env('MEMORY_DIR',                  '~/.openclaw/evo-memory/'),
+  DASHBOARD_PORT:           envInt('DASHBOARD_PORT',           5174),
 };

@@ -13,6 +13,7 @@ import type { Experiment, GeneratedSkill, PromotionDecision, SkillApproval } fro
 import { comparator } from './comparator.js';
 import { SkillManager } from '../openclaw/skillManager.js';
 import { improvementLog } from '../memory/improvementLog.js';
+import { DEFAULT_CONFIG } from '../constants.js';
 
 const SKILLS_DIR = process.env.SKILL_OUTPUT_DIR ?? join(process.env.HOME ?? '~', '.openclaw', 'skills');
 
@@ -29,11 +30,10 @@ const log = {
     process.env.DEBUG && console.log(`[promoter:debug] ${msg}`, meta ?? ''),
 };
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const MIN_IMPROVEMENT_PCT = parseFloat(process.env.MIN_IMPROVEMENT_PCT ?? '5');
-const DEFAULT_CONFIDENCE = parseFloat(process.env.STATISTICAL_CONFIDENCE ?? '0.95');
 const PROMOTION_LOG = join(SKILLS_DIR, '.promotion-log.jsonl');
+
+// ── Re-export thresholds from DEFAULT_CONFIG for convenience ───────────────────
+const { MIN_IMPROVEMENT_PCT, STATISTICAL_CONFIDENCE: DEFAULT_CONFIDENCE } = DEFAULT_CONFIG;
 
 // ── Skill Manager (for auto-deployment) ───────────────────────────────────────
 
