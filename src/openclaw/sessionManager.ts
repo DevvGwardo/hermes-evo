@@ -16,9 +16,11 @@ export class SessionManager {
   }
 
   async getActiveSessions(): Promise<OpenClawSession[]> {
-    // Fetch sessions active in the last 10 minutes so we catch
-    // recently completed cron sessions, not just currently running ones
-    return this.gateway.listSessions(50, 10);
+    // Fetch sessions active within the configured window (default 30 min).
+    // Must be wider than the cycle interval (5 min) to catch sessions that
+    // completed between cycles.
+    const windowMinutes = parseInt(process.env.ACTIVE_SESSION_MINUTES ?? '30', 10);
+    return this.gateway.listSessions(50, windowMinutes);
   }
 
   async getSessionMetrics(sessionKey: string): Promise<SessionMetrics> {
