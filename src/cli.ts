@@ -351,7 +351,7 @@ function startWatchMode(): void {
     }
 
     log(chalk.cyan('🔁 Restarting hub…'));
-    const child = spawn('bun', [path.join(__dirname, 'hub.js')], { stdio: 'inherit' });
+    const child = spawn('node', [path.join(__dirname, 'hub.js')], { stdio: 'inherit' });
     currentPid = child.pid ?? null;
   };
 
