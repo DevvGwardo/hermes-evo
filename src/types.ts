@@ -236,6 +236,7 @@ export interface PromotionDecision {
 }
 
 export interface SkillApproval {
+  approvalId: string;
   skillId: string;
   requestedAt: Date;
   requestedBy: 'auto-promoter';

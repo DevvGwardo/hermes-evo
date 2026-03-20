@@ -20,17 +20,58 @@ import { DEFAULT_CONFIG } from './constants.js';
 import { startServer } from './server.js';
 import { improvementLog } from './memory/improvementLog.js';
 import { failureCorpus } from './memory/failureCorpus.js';
+import { promoter } from './experiment/promoter.js';
 import chalk from 'chalk';
 import * as readline from 'readline/promises';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 const isOnceMode = process.argv.includes('--once');
 const isWatchMode = process.argv.includes('--watch');
 const isTestFailures = process.argv.includes('--test-failures');
+
+function buildDashboard(): void {
+  const dashboardDir = path.join(PROJECT_ROOT, 'dashboard');
+  const distIndex = path.join(dashboardDir, 'dist', 'index.html');
+
+  // Skip build if dist is up-to-date (newer than all source files)
+  if (fs.existsSync(distIndex)) {
+    const distTime = fs.statSync(distIndex).mtimeMs;
+    let needsBuild = false;
+    const check = (dir: string) => {
+      if (needsBuild) return;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (needsBuild) return;
+        const full = path.join(dir, entry.name);
+        // Skip dist/ and node_modules/
+        if (entry.isDirectory()) {
+          if (entry.name === 'dist' || entry.name === 'node_modules') continue;
+          check(full);
+        } else if (fs.statSync(full).mtimeMs > distTime) {
+          needsBuild = true;
+        }
+      }
+    };
+    try {
+      check(dashboardDir);
+    } catch {
+      needsBuild = true;
+    }
+    if (!needsBuild) return;
+  }
+
+  console.log(chalk.cyan('  Building dashboard…'));
+  try {
+    execSync('npx vite build dashboard', { cwd: PROJECT_ROOT, stdio: 'pipe' });
+    console.log(chalk.green('  Dashboard built.'));
+  } catch {
+    console.warn(chalk.yellow('  Dashboard build failed — UI may be stale.'));
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -233,17 +274,36 @@ async function startRepl(): Promise<void> {
     else if (cmd === 'approve') {
       const skillId = args[0];
       if (!skillId) {
-        console.log(chalk.yellow('  Usage: approve <skill-id>'));
+        console.log(chalk.yellow('  Usage: approve <skill-id|approval-id>'));
       } else if (!hubReady || hubInitError) {
         console.log(chalk.red('  Hub not running.'));
       } else {
-        const skills = hub.getProposedSkills();
-        const skill = skills.find((s) => s.id === skillId || s.name === skillId);
-        if (!skill) {
-          console.log(chalk.red(`  Skill not found: ${skillId}`));
+        const pending = promoter.getPendingApprovals();
+
+        // Find the matching approval — by approval ID, skill ID, or skill name
+        const approval = pending.find((a) =>
+          a.approvalId === skillId ||
+          a.skillId === skillId ||
+          hub.getProposedSkills().some((s) => s.name === skillId && s.id === a.skillId)
+        );
+
+        if (!approval) {
+          console.log(chalk.red(`  No pending approval found for: ${skillId}`));
+          if (pending.length > 0) {
+            console.log(chalk.yellow(`  Pending approvals:`));
+            for (const a of pending) {
+              console.log(chalk.yellow(`    ${a.approvalId} (skill: ${a.skillId})`));
+            }
+          } else {
+            console.log(chalk.yellow(`  No approvals pending. Skills must pass an experiment first.`));
+          }
         } else {
-          skill.status = 'pending_approval';
-          console.log(chalk.green(`  Approved: ${skill.name}`));
+          try {
+            await promoter.approveSkill(approval.approvalId);
+            console.log(chalk.green(`  Approved and deployed: ${approval.skillId}`));
+          } catch (err) {
+            console.log(chalk.red(`  Approval failed: ${err instanceof Error ? err.message : String(err)}`));
+          }
         }
       }
     }
@@ -394,6 +454,11 @@ async function main(): Promise<void> {
   if (isWatchMode) {
     startWatchMode();
     return;
+  }
+
+  // Ensure dashboard is built for any mode that starts the server
+  if (!isOnceMode && !isTestFailures && !isWatchMode) {
+    buildDashboard();
   }
 
   if (isOnceMode || isTestFailures) {

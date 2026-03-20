@@ -258,14 +258,19 @@ function runFromMetrics(experiment: Experiment, metrics: SessionMetrics[]): void
       });
 
       // Treatment: would the skill's fix have helped?
-      // If the call succeeded already → still succeeds (score: 100)
-      // If the call failed → the skill targets this exact failure, so it would fix it
+      // If the call succeeded already → still succeeds with real score
+      // If the call failed → the skill *targets* this pattern, but we can't
+      // guarantee it fixes every instance. Use a conservative estimate:
+      //   - 70% chance the skill would fix a matching failure
+      //   - Deterministic per-task so results are reproducible (hash-based)
+      const wouldFix = !tc.success && hashProbability(taskId) < 0.7;
       treatmentResults.push({
         taskId,
-        success: true, // skill is designed to fix this failure pattern
+        success: tc.success || wouldFix,
         toolCalls: 1,
-        durationMs: Math.round(durationMs * 0.8), // assume slight latency improvement
-        score: 100,
+        durationMs,
+        errorMessage: wouldFix ? undefined : tc.error,
+        score: (tc.success || wouldFix) ? 100 : 0,
       });
     }
 
@@ -288,14 +293,16 @@ function runFromMetrics(experiment: Experiment, metrics: SessionMetrics[]): void
         score: session.success ? 100 : 0,
       });
 
-      // Treatment: assume the skill fixes sessions that had errors matching its pattern
-      const wouldFix = session.errorCount > 0;
+      // Treatment: estimate skill impact on sessions with matching errors
+      // Conservative: 70% fix probability for sessions with errors, deterministic per-task
+      const wouldFix = session.errorCount > 0 && hashProbability(taskId) < 0.7;
+      const treatmentSuccess = wouldFix ? true : session.success;
       treatmentResults.push({
         taskId,
-        success: wouldFix ? true : session.success,
+        success: treatmentSuccess,
         toolCalls: session.totalToolCalls,
-        durationMs: Math.round(durationMs * 0.9),
-        score: 100,
+        durationMs,
+        score: treatmentSuccess ? 100 : 0,
       });
     }
   }
@@ -346,6 +353,19 @@ function buildTaskSet(skill: GeneratedSkill): ExperimentTask[] {
   }
 
   return tasks;
+}
+
+/**
+ * Deterministic pseudo-random probability from a string key.
+ * Returns a value in [0, 1) — same key always yields same result,
+ * so experiment results are reproducible.
+ */
+function hashProbability(key: string): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0) / 0x100000000;
 }
 
 function inferExperimentTaskType(description: string): string {
