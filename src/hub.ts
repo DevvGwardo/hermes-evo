@@ -455,7 +455,7 @@ export class EvoHub {
     // Clean up old experiments to prevent unbounded accumulation
     if (this.activeExperiments.size > 50) {
       const sorted = Array.from(this.activeExperiments.entries())
-        .sort((a, b) => (a[1].completedAt?.getTime() ?? 0) - (b[1].completedAt?.getTime() ?? 0));
+        .sort((a, b) => (new Date(a[1].completedAt ?? 0).getTime() ?? 0) - (new Date(b[1].completedAt ?? 0).getTime() ?? 0));
       const toRemove = sorted.slice(0, sorted.length - 50);
       for (const [id] of toRemove) this.activeExperiments.delete(id);
     }

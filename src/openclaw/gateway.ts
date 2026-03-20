@@ -118,6 +118,30 @@ export class Gateway {
     return resp as unknown as ToolResult;
   }
 
+  /**
+   * POST directly to /tools/invoke — bypasses the 'tools_invoke' tool wrapper.
+   * Use this for spawning sessions when the gateway doesn't expose tools_invoke
+   * as a callable tool.
+   */
+  async postTool(tool: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = getGatewayToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${this.baseUrl}/tools/invoke`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ tool, args }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`${tool} failed (${res.status}): ${text}`);
+    }
+
+    return (await res.json()) as Record<string, unknown>;
+  }
+
   async getStatus(): Promise<{ connected: boolean; version?: string }> {
     try {
       // Simple HTTP GET to the gateway root — the gateway doesn't expose
