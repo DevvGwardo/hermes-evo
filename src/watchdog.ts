@@ -52,7 +52,7 @@ export const DEFAULT_WATCHDOG_CONFIG: WatchdogConfig = {
   restartCooldownMs: envInt('WATCHDOG_RESTART_COOLDOWN_MS', 60_000),
   maxRestarts:       envInt('WATCHDOG_MAX_RESTARTS', 10),
   restartCommand:    process.env.WATCHDOG_RESTART_CMD ?? 'openclaw',
-  restartArgs:       (process.env.WATCHDOG_RESTART_ARGS ?? 'gateway install').split(' '),
+  restartArgs:       (process.env.WATCHDOG_RESTART_ARGS ?? 'gateway start').split(' '),
   enabled:           envBool('WATCHDOG_ENABLED', true),
 };
 
@@ -247,6 +247,7 @@ export class GatewayWatchdog {
       const child = spawn(this.config.restartCommand, this.config.restartArgs, {
         stdio: 'pipe',
         detached: true,
+        shell: process.platform === 'win32',
       });
 
       let stderr = '';
