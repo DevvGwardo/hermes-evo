@@ -22,7 +22,7 @@ export const DEFAULT_WEIGHTS = {
 
 export const DEFAULT_CONFIG: EvoConfig = {
   CYCLE_INTERVAL_MS:        envInt('CYCLE_INTERVAL_MS',        5 * 60 * 1000),
-  FAILURE_THRESHOLD:        envInt('FAILURE_THRESHOLD',         3),
+  FAILURE_THRESHOLD:        envInt('FAILURE_THRESHOLD',         1),
   MAX_SKILLS_PER_CYCLE:     envInt('MAX_SKILLS_PER_CYCLE',     3),
   EXPERIMENT_SESSIONS:      envInt('EXPERIMENT_SESSIONS',      5),
   MIN_IMPROVEMENT_PCT:       envInt('MIN_IMPROVEMENT_PCT',     10),

@@ -113,8 +113,149 @@ export function extractToolCallsFromHistory(
   const openai = extractOpenAI(messages, sessionStartTime);
   if (openai.length > 0) return openai;
 
+  // OpenClaw gateway uses toolResult role messages (non-standard format)
+  const gateway = extractGatewayToolResult(messages, sessionStartTime);
+  if (gateway.length > 0) return gateway;
+
   // Last resort: scan for any structured tool data in message metadata
   return extractFromMetadata(messages, sessionStartTime);
+}
+
+/**
+ * OpenClaw gateway format: role=toolResult with toolCallId, toolName,
+ * content, isError, timestamp fields.
+ *
+ * NOTE: The gateway's sessions_history returns toolResult messages but does NOT
+ * include the original assistant messages with tool_use blocks. Therefore, when
+ * we encounter toolResult messages without a matching tool_use, we reconstruct
+ * a minimal ToolCall directly from the result data.
+ */
+function extractGatewayToolResult(messages: Record<string, unknown>[], sessionStartTime: number): ToolCall[] {
+  const toolCalls: ToolCall[] = [];
+
+  // Index toolResult messages by their toolCallId
+  const resultMap = new Map<string, { content?: unknown; isError?: boolean; timestamp?: number }>();
+  for (const msg of messages) {
+    if (msg.role === 'toolResult' && typeof msg.toolCallId === 'string') {
+      resultMap.set(msg.toolCallId as string, {
+        content: msg.content,
+        isError: msg.isError === true || msg.is_error === true,
+        timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : undefined,
+      });
+    }
+  }
+
+  // Index toolResult messages by position for fallback pairing
+  const toolResultMsgs: Array<{ name: string; content?: unknown; isError?: boolean; timestamp?: number; toolCallId: string }> = [];
+  for (const msg of messages) {
+    if (msg.role === 'toolResult') {
+      toolResultMsgs.push({
+        toolCallId: (msg.toolCallId as string) ?? `tool-result-${toolResultMsgs.length}`,
+        name: (msg.toolName as string) ?? 'unknown',
+        content: msg.content,
+        isError: msg.isError === true || msg.is_error === true,
+        timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : undefined,
+      });
+    }
+  }
+
+  let callIndex = 0;
+
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const block of msg.content as Array<Record<string, unknown>>) {
+        if (block.type === 'tool_use') {
+          const id = (block.id as string) ?? `tool-${callIndex}`;
+          const result = resultMap.get(id);
+
+          // Primary: gateway-reported error flag
+          // Secondary: scan content for command-failure indicators
+          // (gateway sets isError=False even when commands return non-zero exit codes)
+          const content = result?.content != null
+            ? typeof result.content === 'string' ? result.content as string : JSON.stringify(result.content)
+            : '';
+          const hasError = result?.isError === true || isContentFailure(content);
+
+          const errorStr = hasError && result?.content != null
+            ? typeof result.content === 'string'
+              ? result.content as string
+              : JSON.stringify(result.content)
+            : undefined;
+
+          const startTime = result?.timestamp ?? (sessionStartTime + callIndex * 1000);
+          const endTime = result?.timestamp ? startTime + 500 : undefined;
+
+          toolCalls.push({
+            id,
+            name: (block.name as string) ?? 'unknown',
+            input: (block.input as Record<string, unknown>) ?? {},
+            output: !hasError ? (result?.content as string) : undefined,
+            error: errorStr,
+            startTime,
+            endTime,
+            success: result != null ? !hasError : false,
+          });
+          callIndex++;
+        }
+      }
+    }
+  }
+
+  // If no tool_calls were found via tool_use pairing (gateway doesn't store
+  // the originating assistant messages), reconstruct them from toolResult entries.
+  // Each toolResult is treated as a completed tool call.
+  if (toolCalls.length === 0 && toolResultMsgs.length > 0) {
+    for (let i = 0; i < toolResultMsgs.length; i++) {
+      const r = toolResultMsgs[i];
+      const content = r.content != null
+        ? typeof r.content === 'string' ? r.content as string : JSON.stringify(r.content)
+        : '';
+      const hasError = r.isError || isContentFailure(content);
+      const errorStr = hasError && r.content != null
+        ? typeof r.content === 'string' ? r.content as string : JSON.stringify(r.content)
+        : undefined;
+
+      toolCalls.push({
+        id: r.toolCallId,
+        name: r.name,
+        input: {},
+        output: !hasError ? (r.content as string) : undefined,
+        error: errorStr,
+        startTime: r.timestamp ?? (sessionStartTime + i * 1000),
+        endTime: r.timestamp ? r.timestamp + 500 : undefined,
+        success: !hasError,
+      });
+    }
+  }
+
+  return toolCalls;
+}
+
+/**
+ * Detect command failures from tool result content.
+ * The gateway sets isError=False for non-zero exit codes from exec/bash commands,
+ * so we scan the output for common error signatures.
+ */
+function isContentFailure(content: string): boolean {
+  if (!content) return false;
+  const lower = content.toLowerCase();
+  // Command error signatures (cat:, ls:, grep:, curl:, etc. indicate CLI failure)
+  if (/^(cat|ls|grep|curl|wget|node|python|bash):\s*.*/m.test(content)) return true;
+  // Shell error indicators
+  if (lower.includes('no such file') || lower.includes('cannot find') ||
+      lower.includes('enoent') || lower.includes('not found') ||
+      lower.includes('connection refused') || lower.includes('couldn.t connect') ||
+      lower.includes('permission denied') || lower.includes('operation not permitted') ||
+      lower.includes('invalid argument') || lower.includes('does not exist') ||
+      lower.includes('url rejected') || lower.includes('exit code 1') ||
+      lower.includes('exit code 2') || lower.includes('error') ||
+      lower.includes('failed')) return true;
+  // JSON error responses
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed?.status === 'error' || parsed?.error) return true;
+  } catch { /* not JSON */ }
+  return false;
 }
 
 /** Anthropic format: tool_use/tool_result content blocks */

@@ -175,6 +175,20 @@ export const promoter = {
     // Load the treatment skill to get its ID and name
     const skill = await loadTreatmentSkill(experiment.treatmentSkillId);
 
+    // Auto-approve if confidence exceeds threshold (skip approval bottleneck)
+    // AUTO_APPROVE_CONFIDENCE is in percentage (e.g. 95 = 95%); compare against fraction
+    const autoApprovePct = parseFloat(process.env.AUTO_APPROVE_CONFIDENCE ?? '0');
+    const isAutoApproved = autoApprovePct > 0 &&
+      (experiment.statisticalSignificance * 100) >= autoApprovePct;
+
+    if (isAutoApproved) {
+      log.info(`Auto-approving skill ${skill.name} (confidence=${(experiment.statisticalSignificance * 100).toFixed(1)}% ≥ ${autoApprovePct}%)`);
+      await deploySkill(skill);
+      experiment.promotedAt = new Date();
+      skill.status = 'deployed';
+      return { promoted: true, reason: `Auto-approved (${experiment.statisticalSignificance.toFixed(1)}% confidence)` };
+    }
+
     // Create a pending approval record
     const approvalId = `approval-${experimentId}-${Date.now()}`;
     const approval: SkillApproval = {
@@ -371,6 +385,36 @@ async function loadTreatmentSkill(skillId: string): Promise<GeneratedSkill> {
   }
 
   throw new Error(`Treatment skill not found: ${skillId}`);
+}
+
+/**
+ * Install a skill to ~/.openclaw/skills/ and update experiment status.
+ * Used by both auto-approve and manual approve paths.
+ */
+async function deploySkill(skill: GeneratedSkill): Promise<void> {
+  const experiment = [...experimentStore.values()].find(
+    (e) => e.treatmentSkillId === skill.id,
+  );
+  if (!experiment) throw new Error(`No experiment found for skill ${skill.id}`);
+
+  const installedPath = await skillManager.installSkill(skill, experiment.id);
+  skill.status = 'deployed';
+  experiment.status = 'promoted';
+  experiment.promotedAt = new Date();
+  experimentStore.set(experiment.id, experiment);
+
+  appendPromotionLog({
+    experimentId: experiment.id,
+    skillId: skill.id,
+    skillName: skill.name,
+    promotedAt: experiment.promotedAt.toISOString(),
+    improvementPct: experiment.improvementPct,
+    confidence: experiment.statisticalSignificance,
+    approvedBy: 'auto-promoter',
+  });
+
+  console.log(`[SYSTEM_NOTIFY] 🎉 Skill auto-deployed: ${skill.name} → ~/.openclaw/skills/${skill.id}/`);
+  log.info(`Auto-deployed skill "${skill.name}" → ${installedPath}`);
 }
 
 function appendPromotionLog(entry: Record<string, unknown>): void {
