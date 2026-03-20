@@ -13,6 +13,7 @@
  *   GET /api/approvals/pending   → pending skill approvals
  *   POST /api/approvals/:id/approve
  *   POST /api/approvals/:id/reject
+ *   POST /api/evolve              → trigger an evolution cycle
  *   GET /api/webhooks
  *   POST /api/webhooks
  *   DELETE /api/webhooks/:id
@@ -143,7 +144,7 @@ function serveStatic(res: http.ServerResponse, urlPath: string): void {
     const ext = path.extname(filePath);
     res.writeHead(200, {
       'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'max-age=31536000',
+      'Cache-Control': 'no-cache',
     });
     res.end(content);
   } catch {
@@ -192,6 +193,14 @@ function createRouter(hub: EvoHub) {
 
       if (url === '/api/cycles') {
         jsonResponse(res, 200, hub.getCompletedCycles());
+        return;
+      }
+
+      // POST /api/evolve — trigger an evolution cycle on demand
+      if (method === 'POST' && url === '/api/evolve') {
+        hub.runEvolutionCycle()
+          .then(() => jsonResponse(res, 200, { ok: true, message: 'Evolution cycle completed' }))
+          .catch((err) => sendError(res, 500, err instanceof Error ? err.message : String(err)));
         return;
       }
 
