@@ -396,10 +396,9 @@ export class EvoHub {
     const newSkills: GeneratedSkill[] = [];
     const failurePatterns = await failureCorpus.getPatterns(this.config.FAILURE_THRESHOLD);
 
-    // Skip patterns that already have an active skill (avoid duplicate proposals)
+    // Skip patterns that already have a skill (active or recently rejected)
     const activeSkillPatterns = new Set(
       this.proposedSkills
-        .filter((s) => s.status !== 'rejected')
         .map((s) => s.name.split('—')[0].trim().toLowerCase()),
     );
 
@@ -487,16 +486,21 @@ export class EvoHub {
       }
     }
 
-    // Age out proposed skills that have been stuck for too many cycles (no matching failures)
+    // Age out stale skills:
+    // - Proposed skills expire after 5 cycles with no matching failures
+    // - Rejected skills are purged after 10 cycles (keeps them around for dedup)
     const MAX_PROPOSED_CYCLES = 5;
+    const MAX_REJECTED_CYCLES = 10;
     this.proposedSkills = this.proposedSkills.filter((s) => {
-      if (s.status !== 'proposed') return true;
       // Skills without proposedAtCycle are from old checkpoints — treat as old enough to expire
       const age = this.cycleNumber - (s.proposedAtCycle ?? 0);
-      if (age >= MAX_PROPOSED_CYCLES) {
+      if (s.status === 'proposed' && age >= MAX_PROPOSED_CYCLES) {
         s.status = 'rejected';
         this.log('info', chalk.gray(`  🗑️  Expired stale proposal: ${s.name} (${age} cycles old)`));
-        return false;
+        return true; // keep as rejected for dedup
+      }
+      if (s.status === 'rejected' && age >= MAX_REJECTED_CYCLES) {
+        return false; // purge old rejected skills
       }
       return true;
     });
