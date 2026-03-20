@@ -178,6 +178,7 @@ export const promoter = {
     // Create a pending approval record
     const approvalId = `approval-${experimentId}-${Date.now()}`;
     const approval: SkillApproval = {
+      approvalId,
       skillId: skill.id,
       requestedAt: new Date(),
       requestedBy: 'auto-promoter',
