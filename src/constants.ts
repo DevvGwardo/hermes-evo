@@ -21,12 +21,12 @@ export const DEFAULT_WEIGHTS = {
 // ── Main config ───────────────────────────────────────────────────────────────
 
 export const DEFAULT_CONFIG: EvoConfig = {
-  CYCLE_INTERVAL_MS:        envInt('EVO_CYCLE_INTERVAL_MS',        5 * 60 * 1000),
-  FAILURE_THRESHOLD:        envInt('EVO_FAILURE_THRESHOLD',         3),
-  MAX_SKILLS_PER_CYCLE:     envInt('EVO_MAX_SKILLS_PER_CYCLE',     3),
-  EXPERIMENT_SESSIONS:      envInt('EVO_EXPERIMENT_SESSIONS',      5),
-  MIN_IMPROVEMENT_PCT:       envInt('EVO_MIN_IMPROVEMENT_PCT',     10),
-  STATISTICAL_CONFIDENCE:   envFloat('EVO_STATISTICAL_CONFIDENCE', 0.95),
+  CYCLE_INTERVAL_MS:        envInt('EVO_CYCLE_INTERVAL_MS',        60 * 1000),
+  FAILURE_THRESHOLD:        envInt('EVO_FAILURE_THRESHOLD',         1),
+  MAX_SKILLS_PER_CYCLE:     envInt('EVO_MAX_SKILLS_PER_CYCLE',     5),
+  EXPERIMENT_SESSIONS:      envInt('EVO_EXPERIMENT_SESSIONS',      2),
+  MIN_IMPROVEMENT_PCT:       envInt('EVO_MIN_IMPROVEMENT_PCT',     5),
+  STATISTICAL_CONFIDENCE:   envFloat('EVO_STATISTICAL_CONFIDENCE', 0.80),
   OPENCLAW_GATEWAY_URL:     env('OPENCLAW_GATEWAY_URL',            'http://localhost:18789'),
   OPENCLAW_POLL_INTERVAL_MS: envInt('OPENCLAW_POLL_INTERVAL_MS',   10000),
   SKILL_OUTPUT_DIR:         env('EVO_SKILL_OUTPUT_DIR',            '~/.openclaw/skills/'),

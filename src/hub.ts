@@ -12,6 +12,7 @@ import { Gateway } from './openclaw/gateway.js';
 import { SessionManager } from './openclaw/sessionManager.js';
 import { extractToolCallsFromHistory, inferTaskType } from './utils.js';
 import { scoreSessions } from './evaluator/scorer.js';
+import { detectPatterns } from './evaluator/patternDetector.js';
 import { scorePerTool } from './evaluator/reportGenerator.js';
 import { analyze } from './evaluator/reportGenerator.js';
 import { generateFromFailure } from './builder/skillGenerator.js';
@@ -52,6 +53,7 @@ export class EvoHub {
   private completedCycles: EvolutionCycle[] = [];
   private cycleHistory: EvolutionCycle[] = [];
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private oneShot = false;
 
   constructor(config: Partial<EvoConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -171,6 +173,10 @@ export class EvoHub {
    * Called after each evolution cycle completes.
    */
   async checkpoint(): Promise<void> {
+    if (this.oneShot) {
+      this.log('info', chalk.gray('  ⏭️  Skipping checkpoint (one-shot mode)'));
+      return;
+    }
     const state: HubState = {
       cycleNumber: this.cycleNumber,
       completedCycles: this.completedCycles.slice(-50),
@@ -268,6 +274,21 @@ export class EvoHub {
           const avgLatencyMs = completedCalls.length > 0 ? totalLatencyMs / completedCalls.length : 0;
           const taskType = inferTaskType(session, messages);
 
+          this.log('info', chalk.gray(
+            `    📝 Session ${session.key}: ${messages.length} msgs, ${parsedToolCalls.length} tool calls, ` +
+            `${failedCalls} failures, type=${taskType}`,
+          ));
+          if (messages.length > 0 && parsedToolCalls.length === 0) {
+            // Diagnostic: log first message shape to help debug format mismatches
+            const sample = messages[0];
+            const keys = Object.keys(sample).join(',');
+            const contentType = Array.isArray(sample.content) ? 'array' : typeof sample.content;
+            const hasToolCalls = 'tool_calls' in sample;
+            this.log('info', chalk.gray(
+              `    🔍 Msg format: keys=[${keys}] content=${contentType} tool_calls=${hasToolCalls}`,
+            ));
+          }
+
           this.recentMetrics.push({
             sessionId: session.key,
             toolCalls: parsedToolCalls,
@@ -304,8 +325,22 @@ export class EvoHub {
       const recentSessions = this.recentMetrics.slice(-100);
       const overallScore = scoreSessions(recentSessions);
       const toolScores = scorePerTool(recentSessions);
-      const patterns = await failureCorpus.getPatterns(this.config.FAILURE_THRESHOLD);
-      report = analyze(recentSessions, patterns);
+
+      // Detect patterns from live session data (not just the persisted corpus)
+      const livePatterns = detectPatterns(recentSessions, this.config.FAILURE_THRESHOLD);
+
+      // Record newly detected patterns into the failure corpus for accumulation
+      for (const pattern of livePatterns) {
+        const context = pattern.exampleContexts[0] ?? {
+          sessionId: 'unknown', taskDescription: 'unknown',
+          toolInput: {}, errorOutput: pattern.errorMessage, timestamp: new Date(),
+        };
+        await failureCorpus.recordFailure(pattern, context);
+      }
+
+      // Merge persisted corpus patterns with live-detected ones
+      const corpusPatterns = await failureCorpus.getPatterns(this.config.FAILURE_THRESHOLD);
+      report = analyze(recentSessions, corpusPatterns.length > 0 ? corpusPatterns : undefined);
       report.overallScore = overallScore;
       report.toolScores = toolScores;
     } catch (err) {
@@ -372,6 +407,7 @@ export class EvoHub {
         completed.statisticalSignificance = result.confidence;
         completed.improvementPct = result.improvementPct;
 
+        promoter.register(completed);
         const decision = promoter.evaluate(completed);
         if (decision.promoted) {
           const promoteResult = await promoter.promote(completed.id);
@@ -440,9 +476,57 @@ export class EvoHub {
     return Array.from(this.activeExperiments.values());
   }
 
+  // ── Test helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * Inject synthetic sessions with tool failures for testing the full
+   * Build → Experiment → Integrate pipeline.
+   */
+  injectTestFailures(): void {
+    const now = Date.now();
+    const failedToolCalls: import('./types.js').ToolCall[] = [
+      {
+        id: 'test-read-1', name: 'Read', input: { file_path: '/nonexistent/file.ts' },
+        error: 'ENOENT: no such file or directory', startTime: now - 5000, endTime: now - 4500, success: false,
+      },
+      {
+        id: 'test-read-2', name: 'Read', input: { file_path: '/tmp/missing.json' },
+        error: 'ENOENT: no such file or directory', startTime: now - 4000, endTime: now - 3500, success: false,
+      },
+      {
+        id: 'test-bash-1', name: 'Bash', input: { command: 'curl http://unreachable:9999' },
+        error: 'connect ECONNREFUSED 127.0.0.1:9999', startTime: now - 3000, endTime: now - 2000, success: false,
+      },
+      {
+        id: 'test-grep-1', name: 'Grep', input: { pattern: '*.log' },
+        error: 'timeout: operation timed out after 30000ms', startTime: now - 2000, endTime: now - 500, success: false,
+      },
+    ];
+
+    // Inject across multiple sessions so the pattern detector sees recurring failures
+    for (let i = 0; i < 3; i++) {
+      this.recentMetrics.push({
+        sessionId: `test-failure-session-${i}`,
+        toolCalls: failedToolCalls,
+        startTime: now - 60000 + i * 10000,
+        endTime: now - i * 5000,
+        success: false,
+        errorCount: failedToolCalls.length,
+        totalToolCalls: failedToolCalls.length,
+        avgLatencyMs: 750,
+        taskType: 'debugging',
+      });
+    }
+
+    this.log('info', chalk.yellow(`🧪 Injected 3 test sessions with ${failedToolCalls.length} tool failures each`));
+  }
+
   // ── CLI trigger ────────────────────────────────────────────────────────────
 
   async runOnce(): Promise<void> {
+    // One-shot mode: don't write checkpoints (avoids stomping the daemon's state)
+    this.oneShot = true;
+
     // Wait for any in-progress resume() from constructor to finish
     // so we don't race on this.running = false
     await this.resume();
