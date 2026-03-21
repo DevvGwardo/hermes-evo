@@ -7,7 +7,6 @@
 import { mkdir, readFile, writeFile, readdir, unlink } from 'node:fs/promises';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
 
 const DEFAULT_MEMORY_DIR = '~/.openclaw/evo-memory';
 
