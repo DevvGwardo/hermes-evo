@@ -7,7 +7,6 @@
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import type { Experiment, GeneratedSkill, PromotionDecision, SkillApproval } from '../types.js';
 import { comparator } from './comparator.js';

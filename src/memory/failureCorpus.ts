@@ -42,7 +42,7 @@ export const failureCorpus = {
    * appends the new context to `exampleContexts`. Otherwise creates a new record.
    */
   async recordFailure(pattern: FailurePattern, context: FailureContext): Promise<void> {
-    let corpus = (await store.load<FailureCorpus>(CORPUS_KEY)) ?? emptyCorpus();
+    const corpus = (await store.load<FailureCorpus>(CORPUS_KEY)) ?? emptyCorpus();
 
     const existing = findRecord(corpus, pattern);
 

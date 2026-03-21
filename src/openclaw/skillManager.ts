@@ -4,7 +4,7 @@
  * Manages OpenClaw skill files (installation, uninstallation, backup).
  */
 
-import { readFile, writeFile, mkdir, readdir, copyFile, rm } from 'fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm } from 'fs/promises';
 import { join, dirname } from 'path';
 import type { GeneratedSkill } from '../types.js';
 

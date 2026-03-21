@@ -8,7 +8,6 @@ import { WebSocket } from 'ws';
 import type {
   HarnessEvent,
   ToolLifecycle,
-  SessionLifecycle,
   ToolCall,
 } from '../types.js';
 import { getHarnessConfig } from './toolAnalyzer.js';

@@ -303,7 +303,7 @@ export function pruneStaleSkills(
   maxRejectedCycles = 10,
   logger: (level: 'info' | 'warn' | 'error', msg: string) => void,
 ): void {
-  // eslint-disable-next-line no-param-reassign
+   
   skills = skills.filter((s) => {
     const age = currentCycleNumber - (s.proposedAtCycle ?? 0);
     if (s.status === 'proposed' && age >= maxProposedCycles) {

@@ -5,7 +5,7 @@
  */
 
 import { Gateway, type OpenClawSession } from './gateway.js';
-import type { SessionMetrics, ToolCall } from '../types.js';
+import type { SessionMetrics } from '../types.js';
 import { extractToolCallsFromHistory, inferTaskType } from '../utils.js';
 
 export class SessionManager {
