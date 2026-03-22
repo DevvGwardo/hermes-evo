@@ -480,6 +480,7 @@ export class HarnessMonitor {
 }
 
 /** Minimal shape of events returned by the OpenClaw gateway */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface _RawGatewayEvent {
   type: string;
   sessionId?: string;
