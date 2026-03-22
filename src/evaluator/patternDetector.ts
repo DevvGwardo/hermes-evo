@@ -168,7 +168,7 @@ type Severity = FailurePattern['severity'];
 function inferSeverity(
   errorType: string,
   errorMsgPrefix: string,
-  _frequency: number,
+  _freq: number,
 ): Severity {
   const combined = `${errorType} ${errorMsgPrefix}`.toLowerCase();
 

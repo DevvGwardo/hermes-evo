@@ -17,9 +17,6 @@ import { detectPatterns } from './patternDetector.js';
 
 const LOG_PREFIX = '[reportGenerator]';
 
-/** All sessions with at least one failed tool call are considered "problematic tools". */
-const PER_TOOL_MIN_CALLS = 1;
-
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
