@@ -200,7 +200,11 @@ export function calcAccuracy(sessions: SessionMetrics[]): number {
  * The `optimalCalls` parameter is kept for API compatibility but no longer used —
  * a flat "optimal" count penalised normal multi-step agent workflows unfairly.
  */
-export function calcEfficiency(sessions: SessionMetrics[], _optimalCalls?: number): number {
+export function calcEfficiency(
+  sessions: SessionMetrics[],
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+  __optimalCalls?: number,
+): number {
   if (sessions.length === 0) return 0;
 
   const scores = sessions.map((s) => {

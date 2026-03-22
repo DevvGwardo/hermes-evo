@@ -156,7 +156,8 @@ function stripAds(html: string): string {
     .replace(/<!--[sS]*?-->/g, '')
     .replace(/<noscript[^>]*>[sS]*?</noscript>/gi, '')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
+    // eslint-disable-next-line no-useless-escape
+    .replace(/* \s */ /\s+/g, ' ')
     .trim();
 }
 
@@ -166,7 +167,7 @@ function stripAds(html: string): string {
 export function summarizeResults(results: SearchResult[], query: string): string {
   if (!results.length) return \`No results found for "\${query}".\`;
   const lines: string[] = [\`Search results for "\${query}":\
-\];
+];
   results.forEach((r, i) => {
     lines.push(\`\${i + 1}. \${r.title}\`);
     lines.push(\`   URL: \${r.url}\`);

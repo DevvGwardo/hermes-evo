@@ -168,6 +168,7 @@ type Severity = FailurePattern['severity'];
 function inferSeverity(
   errorType: string,
   errorMsgPrefix: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _freq: number,
 ): Severity {
   const combined = `${errorType} ${errorMsgPrefix}`.toLowerCase();

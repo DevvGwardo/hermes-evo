@@ -300,7 +300,7 @@ export class SessionTracker {
 
     const totalToolCalls = toolLifecycles.length;
     const errorCount = toolLifecycles.filter((t) => !t.success).length;
-    const _successfulCalls = toolLifecycles.filter((t) => t.success);
+    const _successfulCalls = toolLifecycles.filter((t) => t.success); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     const completedCalls = toolLifecycles.filter((t) => t.endTime);
     const totalLatencyMs = completedCalls.reduce((sum, t) => {
