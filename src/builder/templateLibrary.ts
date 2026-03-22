@@ -151,10 +151,10 @@ export async function webResearch(options: SearchOptions): Promise<SearchResult[
 /** Remove scripts, styles, comments, and HTML tags from fetched content. */
 function stripAds(html: string): string {
   return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+    .replace(/<script[^>]*>[sS]*?</script>/gi, '')
+    .replace(/<style[^>]*>[sS]*?</style>/gi, '')
+    .replace(/<!--[sS]*?-->/g, '')
+    .replace(/<noscript[^>]*>[sS]*?</noscript>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -165,7 +165,8 @@ function stripAds(html: string): string {
  */
 export function summarizeResults(results: SearchResult[], query: string): string {
   if (!results.length) return \`No results found for "\${query}".\`;
-  const lines: string[] = [\`Search results for "\${query}":\\n\];
+  const lines: string[] = [\`Search results for "\${query}":\
+\];
   results.forEach((r, i) => {
     lines.push(\`\${i + 1}. \${r.title}\`);
     lines.push(\`   URL: \${r.url}\`);
@@ -173,7 +174,8 @@ export function summarizeResults(results: SearchResult[], query: string): string
     if (r.content) lines.push(\`   Preview: \${r.content.slice(0, 300)}...\`);
     lines.push('');
   });
-  return lines.join('\\n');
+  return lines.join('\
+');
 }
 
 export const WEB_RESEARCH_TOOL = {
@@ -288,8 +290,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_PATH_LEN  = 4096;
 
 const DANGEROUS_PATTERNS: RegExp[] = [
-  /\\.\\.(\\/|$)/,           // path traversal
-  /^\\/(etc|proc|sys|dev)/,  // system directories
+  /\\.\\.(/|$)/,           // path traversal
+  /^/(etc|proc|sys|dev)/,  // system directories
   /^\\\\windows\\\\system32/i,
 ];
 
@@ -368,7 +370,8 @@ export async function listDir(dirPath: string): Promise<string[]> {
   validatePath(dirPath);
   try {
     const result = await exec({ command: \`ls -la "\${dirPath}"\` });
-    return String(result).split('\\n').filter(l => l.length > 0);
+    return String(result).split('\
+').filter(l => l.length > 0);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(\`{SKILL_NAME}: list failed for "\${dirPath}" — \${msg}\`);
@@ -582,7 +585,8 @@ const ERROR_SIGNATURES: Array<{
 ];
 
 function classifyError(stderr: string, stdout: string): ClassifiedError {
-  const combined = stderr + '\\n' + stdout;
+  const combined = stderr + '\
+' + stdout;
   for (const sig of ERROR_SIGNATURES) {
     if (sig.pattern.test(combined)) {
       return { ...sig, retryable: sig.category === 'network' || sig.category === 'timeout' };
@@ -653,7 +657,9 @@ export async function runCommand(opts: ExecOptions): Promise<ExecResult> {
   if (!lastError) throw new Error('{SKILL_NAME}: unexpected state after retries');
   const classified = classifyError(lastError.stderr, lastError.stdout);
   const error = new Error(
-    \`{SKILL_NAME} [\${classified.category}/\${classified.severity}]: \${classified.diagnosis}\\n\${lastError.stderr}\\nHint: \${classified.hint}\`
+    \`{SKILL_NAME} [\${classified.category}/\${classified.severity}]: \${classified.diagnosis}\
+\${lastError.stderr}\
+Hint: \${classified.hint}\`
   );
   (error as any).classified = classified;
   (error as any).result    = lastError;
@@ -666,7 +672,9 @@ export async function runCommandStrict(opts: ExecOptions): Promise<ExecResult> {
   if (result.exitCode !== 0) {
     const classified = classifyError(result.stderr, result.stdout);
     throw new Error(
-      \`{SKILL_NAME}: command exited with code \${result.exitCode}\\n\${result.stderr}\\n[\${classified.severity}] \${classified.hint}\`
+      \`{SKILL_NAME}: command exited with code \${result.exitCode}\
+\${result.stderr}\
+[\${classified.severity}] \${classified.hint}\`
     );
   }
   return result;
@@ -1213,7 +1221,8 @@ export function formatDiagnostic(d: DiagnosticResult): string {
     d.fix ? \`Fix:        \${d.fix}\` : null,
     d.workaround ? \`Workaround: \${d.workaround}\` : null,
   ].filter(Boolean);
-  return lines.join('\\n');
+  return lines.join('\
+');
 }
 
 export const CODE_DEBUG_TOOL = {
@@ -1340,7 +1349,8 @@ interface ProcessingResult<T = unknown> {
 
 function parseCSV(input: string, opts: DataProcessorConfig): Record<string, string>[] {
   const delim = opts.delimiter ?? ',';
-  const lines = input.trim().split(/\\r?\\n/);
+  const lines = input.trim().split(/\\r?\
+/);
   if (!lines.length) return [];
 
   const headers = opts.headers !== false
@@ -1378,8 +1388,8 @@ function parseJSON(input: string, strict = false): unknown {
 function parseXML(input: string): Record<string, unknown> {
   // Minimal XML parser — handles well-formed single-root XML
   const result: Record<string, unknown> = {};
-  const tagRe = /<([a-zA-Z_][\\w.-]*)([^>]*)>([\\s\\S]*?)<\\/\\1>/g;
-  const selfClosingRe = /<([a-zA-Z_][\\w.-]*)([^>]*)\\/>/g;
+  const tagRe = /<([a-zA-Z_][\\w.-]*)([^>]*)>([\\s\\S]*?)</\\1>/g;
+  const selfClosingRe = /<([a-zA-Z_][\\w.-]*)([^>]*)/>/g;
   let match;
 
   // Strip XML declaration
@@ -1422,7 +1432,8 @@ function toCSV(data: unknown, opts: DataProcessorConfig): string {
       return val.includes(delim) || val.includes('"') ? \`"\${val}"\` : val;
     }).join(delim)
   );
-  return [headers.join(delim), ...rows].join('\\n');
+  return [headers.join(delim), ...rows].join('\
+');
 }
 
 function toJSON(data: unknown): string {
@@ -1463,7 +1474,8 @@ export function processData<T = unknown>(
         intermediate = parseXML(String(input));
         break;
       case 'text':
-        intermediate = { raw: String(input), lines: String(input).split(/\\r?\\n/) };
+        intermediate = { raw: String(input), lines: String(input).split(/\\r?\
+/) };
         break;
       default:
         intermediate = input;
@@ -1585,8 +1597,11 @@ export const DATA_PROCESSING_TOOL = {
 ## Examples
 
 \`\`\`
-Input:  processData('{"name":"Alice","age":30}\\n{"name":"Bob","age":25}', { inputFormat: 'json', outputFormat: 'csv' })
-Output: ProcessingResult { data: "name,age\\nAlice,30\\nBob,25", meta: { recordCount: 2 } }
+Input:  processData('{"name":"Alice","age":30}\
+{"name":"Bob","age":25}', { inputFormat: 'json', outputFormat: 'csv' })
+Output: ProcessingResult { data: "name,age\
+Alice,30\
+Bob,25", meta: { recordCount: 2 } }
 
 Input:  aggregateByKey([{dept:"eng",salary:100},{dept:"eng",salary:120},{dept:"sales",salary:80}], 'dept', [{field:'salary',op:'avg'}])
 Output: { eng: { salary: 110 }, sales: { salary: 80 } }
@@ -1692,7 +1707,8 @@ export async function gitStatus(cwd?: string): Promise<GitStatusResult> {
 
   const staged: string[] = [], modified: string[] = [], untracked: string[] = [], conflicted: string[] = [];
 
-  for (const line of result.stdout.split('\\n')) {
+  for (const line of result.stdout.split('\
+')) {
     if (!line.trim()) continue;
     const [indexState, workTreeState, ...rest] = line;
     const filePath = rest.join('').replace(/^\\s+/, '').replace(/^["']|["']$/g, '');
@@ -1758,7 +1774,8 @@ export async function gitListBranches(cwd?: string, all = false): Promise<GitBra
   const flag = all ? '-a' : '';
   const result = await gitRunOutput(\`git branch \${flag} --format="%(refname:short)|%(if:equals=HEAD)%(refname:short)%(then)*%(else)%(refname:short)%(end)|%(upstream:short)"\`, cwd);
 
-  return result.stdout.split('\\n').filter(l => l.trim()).map(line => {
+  return result.stdout.split('\
+').filter(l => l.trim()).map(line => {
     const [nameAndCurrent, remote] = line.split('|');
     const [name, ...currentFlag] = nameAndCurrent.split('|');
     return {
@@ -1864,7 +1881,8 @@ export async function gitLog(count = 10, cwd?: string): Promise<GitLogEntry[]> {
   const result = await gitRunOutput(\`git log --format="\${format}" -\${count}\`, cwd);
 
   return result.stdout
-    .split('\\n')
+    .split('\
+')
     .filter(l => l.trim())
     .map(line => {
       const [hash, author, date, ...msgParts] = line.split('|');
@@ -2103,7 +2121,8 @@ export function extractCaption(analysis: string): { caption: string; tags: strin
   const nouns = [...new Set(analysis.match(nounRe) ?? [])];
 
   return {
-    caption: analysis.split('\\n')[0].slice(0, 200),
+    caption: analysis.split('\
+')[0].slice(0, 200),
     tags: [...new Set([...nouns.map(n => n.toLowerCase()), ...(hasText ? ['text'] : [])])],
     hasText,
   };

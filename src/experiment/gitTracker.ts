@@ -41,7 +41,7 @@ function git(cmd: string, cwd?: string): string {
     }).trim();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`git ${cmd} failed: ${msg}`);
+    throw new Error(`git ${cmd} failed: ${msg}`, { cause: err });
   }
 }
 
