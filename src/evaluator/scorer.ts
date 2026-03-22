@@ -119,8 +119,7 @@ export async function adaptiveScoreSessions(
   baselineTimeMs = DEFAULT_BASELINE_TIME_MS,
   optimalCalls = DEFAULT_OPTIMAL_CALLS,
 ): Promise<PerformanceScore> {
-  const _currentWeights = await getWeights();
-  const tunedWeights = tuneWeights(sessions, patterns);
+    const tunedWeights = tuneWeights(sessions, patterns);
   await saveWeights(tunedWeights);
 
   return scoreSessionsWithWeights(sessions, tunedWeights, baselineTimeMs, optimalCalls);
