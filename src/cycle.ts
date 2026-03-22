@@ -32,7 +32,7 @@ import { comparator } from './experiment/comparator.js';
 import { promoter } from './experiment/promoter.js';
 import { failureCorpus } from './memory/failureCorpus.js';
 import { improvementLog } from './memory/improvementLog.js';
-import type { FailurePattern } from './types.js';
+
 
 // ── Shared context threaded through all phases ─────────────────────────────────
 
@@ -289,35 +289,6 @@ export function pruneStaleExperiments(experiments: Map<string, Experiment>): voi
       experiments.delete(id);
     }
   }
-}
-
-/**
- * Age out stale skill proposals:
- * - Proposed skills expire after maxProposedCycles with no matching failures
- * - Rejected skills are purged after maxRejectedCycles (kept around for dedup)
- */
-export function pruneStaleSkills(
-  skills: GeneratedSkill[],
-  currentCycleNumber: number,
-  maxProposedCycles = 5,
-  maxRejectedCycles = 10,
-  logger: (level: 'info' | 'warn' | 'error', msg: string) => void,
-): void {
-   
-  skills = skills.filter((s) => {
-    const age = currentCycleNumber - (s.proposedAtCycle ?? 0);
-    if (s.status === 'proposed' && age >= maxProposedCycles) {
-      s.status = 'rejected';
-      logger('info', chalk.gray(
-        `  \u001b[2m\u001b[37mExpired stale proposal: ${s.name} (${age} cycles old)\u001b[0m`,
-      ));
-      return true; // keep as rejected for dedup
-    }
-    if (s.status === 'rejected' && age >= maxRejectedCycles) {
-      return false; // purge old rejected skills
-    }
-    return true;
-  });
 }
 
 /**
