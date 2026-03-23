@@ -520,6 +520,9 @@ export class EvoHub {
           const promoteResult = await promoter.promote(completed.id);
           if (promoteResult.promoted) {
             this.currentCycle.phases.integrate.improvementsDeployed++;
+            // Sync status in hub's proposedSkills (promoter works on a separate skill copy)
+            const hubSkill = this.proposedSkills.find((s) => s.id === skill.id);
+            if (hubSkill) hubSkill.status = 'deployed';
             this.log('info', chalk.greenBright(`  🚀 Promoted: ${skill.name} (+${result.improvementPct.toFixed(1)}%)`));
 
             // ── Log: kept ──────────────────────────────────────────────
@@ -539,6 +542,8 @@ export class EvoHub {
             if (gitBranch) gitTracker.keepExperiment(gitBranch);
             gitBranch = null; // consumed
           } else if (promoteResult.reason === 'requires_approval' && promoteResult.approvalId) {
+            const hubSkill = this.proposedSkills.find((s) => s.id === skill.id);
+            if (hubSkill) hubSkill.status = 'pending_approval';
             this.log('info', `🛑 Skill ${skill.name} promoted but requires human approval. Run /evo approve ${promoteResult.approvalId} to deploy.`);
             experimentLog.record({
               experimentId: completed.id,
