@@ -424,7 +424,7 @@ export class EvoHub {
     const actionablePatterns = failurePatterns.filter(
       (p) => !activePatternKeys.has(`${p.toolName.toLowerCase()}/${p.errorType.toLowerCase()}`),
     );
-// Deduplicate by toolName/errorType to prevent duplicate corpus entries
+    // Deduplicate by toolName/errorType to prevent duplicate corpus entries
     // from consuming MAX_SKILLS_PER_CYCLE slots.
     const seenPatternKeys = new Set<string>();
     const uniquePatterns: typeof actionablePatterns = [];
@@ -436,21 +436,23 @@ export class EvoHub {
       }
     }
 
-    for (const pattern of uniquePatterns.slice(0, this.config.MAX_SKILLS_PER_CYCLE)) {
+    // Pre-filter: generate skill and skip if already deployed — BEFORE the slice.
+    // This prevents already-deployed patterns from consuming MAX_SKILLS_PER_CYCLE slots
+    // and starving new patterns that actually need a skill to be built.
+    const candidatePatterns: { pattern: typeof uniquePatterns[number]; result: ReturnType<typeof generateFromFailure> }[] = [];
+    for (const pattern of uniquePatterns) {
       const patternKey = `${pattern.toolName.toLowerCase()}/${pattern.errorType.toLowerCase()}`;
-      if (activePatternKeys.has(patternKey)) {
-        continue;
-      }
-      try {
-        const result = generateFromFailure(pattern);
-        if (result.skill) {
-          // Skip if a skill with the same name is already deployed
-          if (deployedSkillNames.has(result.skill.name)) {
-            // silently skip — already deployed
-            continue;
-          }
-          const validation = validate(result.skill);
+      if (activePatternKeys.has(patternKey)) continue;
+      const result = generateFromFailure(pattern);
+      if (!result.skill) continue;
+      if (deployedSkillNames.has(result.skill.name)) continue; // already deployed — don't consume a slot
+      candidatePatterns.push({ pattern, result });
+    }
 
+    for (const { pattern, result } of candidatePatterns.slice(0, this.config.MAX_SKILLS_PER_CYCLE)) {
+      try {
+        if (result.skill) {
+          const validation = validate(result.skill);
           if (validation.valid) {
             result.skill.patternFrequency = pattern.frequency;
             result.skill.status = 'proposed';
