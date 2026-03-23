@@ -406,14 +406,18 @@ export class EvoHub {
     const failurePatterns = await failureCorpus.getPatterns(this.config.FAILURE_THRESHOLD);
     // Skip patterns whose (toolName, errorType) already has a proposed/deployed skill.
     // Key by "toolName/errorType" — stable across corpus rebuilds (unlike pattern ID).
+    // Only block re-proposal of skills that are still active (not rejected).
+    // Rejected skills can be re-proposed since their experiment failed.
     const activePatternKeys = new Set(
-      this.proposedSkills.map((s) => {
-        // Skill name format: "${toolName} — ${errorType} Skill"
-        const parts = s.name.split('—').map((p) => p.trim());
-        return parts.length >= 2
-          ? `${parts[0].toLowerCase()}/${parts[1].replace(' Skill', '').toLowerCase()}`
-          : s.name.toLowerCase();
-      }),
+      this.proposedSkills
+        .filter((s) => s.status !== 'rejected')
+        .map((s) => {
+          // Skill name format: "${toolName} — ${errorType} Skill"
+          const parts = s.name.split('—').map((p) => p.trim());
+          return parts.length >= 2
+            ? `${parts[0].toLowerCase()}/${parts[1].replace(' Skill', '').toLowerCase()}`
+            : s.name.toLowerCase();
+        }),
     );
 
     // Deduplicate: skip patterns whose skill is already deployed
