@@ -1,0 +1,13 @@
+{
+  "experimentId": "exp-7354a90a-226b-4fdc-b60b-296d86f6d720-test",
+  "experimentName": "A/B: http — Timeout Skill",
+  "skill": {
+    "id": "7354a90a-226b-4fdc-b60b-296d86f6d720",
+    "name": "http — Timeout Skill",
+    "description": "Handles timeout errors for the http tool. Fix strategy: Check the target resource availability before retrying.",
+    "confidence": 0.7167226875575465,
+    "targetFailurePattern": "test-fp-49cb5cf1",
+    "generatedAt": "2026-03-23T17:33:55.374Z"
+  },
+  "createdAt": "2026-03-23T17:33:55.425Z"
+}
