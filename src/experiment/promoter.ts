@@ -153,7 +153,7 @@ export const promoter = {
     const patternFreq = skill?.patternFrequency ?? 0;
     const skillName = skill?.name ?? experiment.treatmentSkillId;
     const FREQ_FALLBACK_THRESHOLD = 3;
-    const CONF_FALLBACK_THRESHOLD = 0.40;
+    const CONF_FALLBACK_THRESHOLD = 0.15;
 
     if (patternFreq >= FREQ_FALLBACK_THRESHOLD && skillConf >= CONF_FALLBACK_THRESHOLD) {
       // Set stat sig to 100% so promote()'s auto-approve check passes
