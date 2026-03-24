@@ -119,6 +119,8 @@ export interface Experiment {
   startedAt: Date;
   completedAt?: Date;
   promotedAt?: Date;
+  /** Full generated skill — persisted so deploySkill can access real content (desc, triggers, impl) */
+  treatmentSkill?: GeneratedSkill;
 }
 
 export interface ExperimentTask {

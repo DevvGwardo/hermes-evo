@@ -61,6 +61,7 @@ export const experimentRunner = {
       description: `Comparing ${treatmentSkill.name} (treatment) vs ${controlSkillId ?? 'baseline'}`,
       controlSkillId,
       treatmentSkillId: treatmentSkill.id,
+      treatmentSkill, // Store full skill so deploySkill can access real desc/triggers/impl
       taskSet,
       status: 'pending',
       controlResults: [],

@@ -377,15 +377,19 @@ function resolveExperiment(experimentOrId: Experiment | string): Experiment | un
  *  3. Try fetching from the OpenClaw gateway API
  */
 async function loadTreatmentSkill(skillId: string): Promise<GeneratedSkill> {
-  // 1. Check experiment store
+  // 1. Check experiment store — prefer stored full skill (has desc, triggers, impl)
   for (const exp of experimentStore.values()) {
     if (exp.treatmentSkillId === skillId) {
-      log.debug(`Found skill ${skillId} in experiment store`);
-      // Reconstruct a GeneratedSkill from experiment data
+      if (exp.treatmentSkill) {
+        log.debug(`Loaded full skill ${skillId} from experiment store`);
+        return exp.treatmentSkill;
+      }
+      log.debug(`Reconstructing skill ${skillId} from experiment metadata (full skill not stored)`);
+      // Fallback: reconstruct from metadata only (desc, triggers, impl will be empty)
       return {
         id: skillId,
         name: exp.name.replace('A/B: ', ''),
-        description: exp.description,
+        description: `Handles ${exp.name.replace('A/B: ', '')} errors`,
         triggerPhrases: [],
         implementation: '',
         examples: [],
