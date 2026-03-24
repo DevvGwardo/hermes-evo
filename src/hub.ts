@@ -244,13 +244,18 @@ export class EvoHub {
     // Also load separately-persisted deployed skills so they survive checkpoint gaps
     const persistedDeployed = await this.deployedSkillsStore.load<GeneratedSkill[]>('deployed-skills');
     if (persistedDeployed && Array.isArray(persistedDeployed)) {
+      // Deduplicate by name — same skill generated with a different ID shouldn't be added twice
+      const existingNames = new Set(this.proposedSkills.map((s) => s.name));
+      let added = 0;
       for (const skill of persistedDeployed) {
-        if (!this.proposedSkills.find((s) => s.id === skill.id)) {
+        if (!existingNames.has(skill.name)) {
           skill.status = 'deployed';
           this.proposedSkills.push(skill);
+          existingNames.add(skill.name);
+          added++;
         }
       }
-      this.log('info', `✓ Restored ${persistedDeployed.length} deployed skills from persistent store`);
+      this.log('info', `✓ Restored ${added} deployed skills from persistent store (${persistedDeployed.length} on disk)`);
     }
   }
 

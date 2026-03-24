@@ -769,37 +769,60 @@ function CycleLogPanel({ cycles }: { cycles: DashboardData['cycles'] }) {
 // ---------------------------------------------------------------------------
 // All-Skills Summary (compact strip)
 // ---------------------------------------------------------------------------
+// Deployed Skills Panel
+// ---------------------------------------------------------------------------
 
-function SkillsSummary({ skills }: { skills: DashboardData['proposedSkills'] }) {
-  const byStatus = {
-    pending: skills.filter(s => s.status === 'pending').length,
-    approved: skills.filter(s => s.status === 'approved').length,
-    deployed: skills.filter(s => s.status === 'deployed').length,
-    rejected: skills.filter(s => s.status === 'rejected').length,
-  };
-  const rows: { label: string; count: number; color: string }[] = [
-    { label: 'Pending', count: byStatus.pending, color: C.amber },
-    { label: 'Approved', count: byStatus.approved, color: C.purple },
-    { label: 'Deployed', count: byStatus.deployed, color: C.green },
-    { label: 'Rejected', count: byStatus.rejected, color: C.red },
-  ];
+function DeployedSkillsPanel({ skills }: { skills: DashboardData['proposedSkills'] }) {
+  const deployed = skills.filter(s => s.status === 'deployed');
   return (
-    <Panel title="Skills" icon="⚙" badge={skills.length}>
-      <div style={{ padding: '6px 10px', display: 'flex', gap: 8, flex: 1, alignItems: 'center' }}>
-        {rows.map(r => (
-          <div key={r.label} style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: r.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-              {r.count}
-            </div>
-            <div style={{ fontSize: 8, color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>
-              {r.label}
-            </div>
-          </div>
-        ))}
-      </div>
+    <Panel title="Deployed Skills" icon="⚙" badge={deployed.length}>
+      {deployed.length === 0 ? (
+        <EmptyState msg="No skills deployed yet" />
+      ) : (
+        <div style={{ overflow: 'auto', flex: 1 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['Tool', 'Skill', 'Conf'].map(h => (
+                  <th key={h} style={{
+                    padding: '5px 8px', textAlign: 'left', fontSize: 9, fontWeight: 700,
+                    color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.4,
+                    borderBottom: `1px solid ${C.border}`, background: C.panelAlt,
+                    position: 'sticky', top: 0,
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {deployed.slice(0, 12).map(sk => {
+                const parts = sk.name.split('—').map(p => p.trim());
+                const tool = parts[0] ?? sk.name;
+                const skill = parts.length >= 2 ? parts[1].replace(' Skill', '') : sk.name;
+                return (
+                  <tr key={sk.id} style={{ transition: 'background 0.1s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = C.panelAlt)}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <td style={{ padding: '4px 8px', fontSize: 10, fontWeight: 700, color: C.cyan, fontFamily: 'monospace' }}>
+                      {tool}
+                    </td>
+                    <td style={{ padding: '4px 8px', fontSize: 9, color: C.text }}>
+                      {skill}
+                    </td>
+                    <td style={{ padding: '4px 8px', fontSize: 9, fontWeight: 700, color: C.green }}>
+                      {sk.confidence}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Panel>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // App Root
@@ -902,14 +925,21 @@ export default function App() {
           <ProposedSkillsPanel skills={data.proposedSkills} onRefresh={handleRefresh} />
         </div>
 
-        {/* Cycle Log — last panel, full width on tablet */}
+        {/* Deployed Skills — replaces Cycle Log on desktop, fills tablet */}
         {bp === 'tablet' && (
           <div style={{ minHeight: 0, overflow: 'hidden', gridColumn: '1 / -1' }}>
-            <CycleLogPanel cycles={data.cycles} />
+            <DeployedSkillsPanel skills={data.proposedSkills} />
           </div>
         )}
         {bp !== 'tablet' && (
           <div style={{ minHeight: 0, overflow: 'hidden' }}>
+            <DeployedSkillsPanel skills={data.proposedSkills} />
+          </div>
+        )}
+
+        {/* Cycle Log — only shown on tablet (full width) */}
+        {bp === 'tablet' && (
+          <div style={{ minHeight: 0, overflow: 'hidden', gridColumn: '1 / -1' }}>
             <CycleLogPanel cycles={data.cycles} />
           </div>
         )}
