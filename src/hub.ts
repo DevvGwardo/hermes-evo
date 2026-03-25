@@ -372,6 +372,12 @@ export class EvoHub {
     }
     this.currentCycle.phases.monitor.durationMs = Date.now() - monitorStart;
 
+    // DEBUG: log recentMetrics state before evaluate
+    {
+      const injected = this.recentMetrics.filter(s => s.sessionId.startsWith('test-failure-session'));
+      this.log('info', chalk.gray(`  🔍 DEBUG recentMetrics: ${this.recentMetrics.length} total, ${injected.length} injected, last 5 types: ${this.recentMetrics.slice(-5).map(s => s.taskType).join(',')}`));
+    }
+
     // ── Phase 2: Evaluate ───────────────────────────────────────────────────
     const evaluateStart = Date.now();
     let report: EvaluationReport;
