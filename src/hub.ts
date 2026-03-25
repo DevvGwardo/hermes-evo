@@ -755,24 +755,51 @@ export class EvoHub {
    * Inject synthetic sessions with tool failures for testing the full
    * Build → Experiment → Integrate pipeline.
    */
+  /**
+   * Inject synthetic tool failures to stress-test the pattern detector and skill builder.
+   * Injects multiple failure types for Bash and Grep (the two stuck skills) so the
+   * detector sees recurring patterns and can refine confidence scores.
+   */
   injectTestFailures(): void {
     const now = Date.now();
     const failedToolCalls: import('./types.js').ToolCall[] = [
+      // Read failures — "file not found" pattern
       {
         id: 'test-read-1', name: 'Read', input: { file_path: '/nonexistent/file.ts' },
-        error: 'ENOENT: no such file or directory', startTime: now - 5000, endTime: now - 4500, success: false,
+        error: 'ENOENT: no such file or directory', startTime: now - 9000, endTime: now - 8500, success: false,
       },
       {
         id: 'test-read-2', name: 'Read', input: { file_path: '/tmp/missing.json' },
-        error: 'ENOENT: no such file or directory', startTime: now - 4000, endTime: now - 3500, success: false,
+        error: 'ENOENT: no such file or directory', startTime: now - 8000, endTime: now - 7500, success: false,
       },
+      // Bash failures — multiple distinct error patterns
       {
         id: 'test-bash-1', name: 'Bash', input: { command: 'curl http://unreachable:9999' },
-        error: 'connect ECONNREFUSED 127.0.0.1:9999', startTime: now - 3000, endTime: now - 2000, success: false,
+        error: 'connect ECONNREFUSED 127.0.0.1:9999', startTime: now - 7000, endTime: now - 6500, success: false,
       },
       {
+        id: 'test-bash-2', name: 'Bash', input: { command: 'tail /nonexistent/logfile.log' },
+        error: 'tail: /nonexistent/logfile.log: No such file or directory\n(Command exited with code 1)',
+        startTime: now - 6000, endTime: now - 5500, success: false,
+      },
+      {
+        id: 'test-bash-3', name: 'Bash', input: { command: 'ssh nonexistent-host.example.com exit' },
+        error: 'ssh: Could not resolve hostname nonexistent-host.example.com: nodename nor servname provided\n(Command exited with code 255)',
+        startTime: now - 5000, endTime: now - 4500, success: false,
+      },
+      {
+        id: 'test-bash-4', name: 'Bash', input: { command: 'ping -c 3 192.0.2.1' },
+        error: 'ping: cannot resolve 192.0.2.1: Unknown host\n(Command exited with code 2)',
+        startTime: now - 4000, endTime: now - 3500, success: false,
+      },
+      // Grep failures — timeout variants
+      {
         id: 'test-grep-1', name: 'Grep', input: { pattern: '*.log' },
-        error: 'timeout: operation timed out after 30000ms', startTime: now - 2000, endTime: now - 500, success: false,
+        error: 'timeout: operation timed out after 30000ms', startTime: now - 3000, endTime: now - 2500, success: false,
+      },
+      {
+        id: 'test-grep-2', name: 'Grep', input: { pattern: 'ERROR' },
+        error: 'timeout: operation timed out after 30000ms', startTime: now - 2000, endTime: now - 1500, success: false,
       },
     ];
 

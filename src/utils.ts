@@ -476,7 +476,10 @@ export function inferTaskType(
   session: { kind?: string; channel?: string; displayName?: string },
   messages: Record<string, unknown>[],
 ): string {
-  if (session.kind && session.kind !== 'chat') return session.kind;
+  // 'other' and 'general' from the gateway mean "unknown" — fall through to content.
+  if (session.kind && session.kind !== 'chat' && session.kind !== 'other' && session.kind !== 'general') {
+    return session.kind;
+  }
   if (session.channel) return session.channel;
 
   const firstUserMsg = messages.find((m) => m.role === 'user');

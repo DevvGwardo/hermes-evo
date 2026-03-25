@@ -4,9 +4,10 @@
  * All I/O is async; auto-creates the memory directory on init.
  */
 
-import { mkdir, readFile, writeFile, readdir, unlink } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, unlink, rename } from 'node:fs/promises';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 const DEFAULT_MEMORY_DIR = '~/.openclaw/evo-memory';
 
@@ -36,13 +37,16 @@ export class MemoryStore {
 
   /**
    * Persist `data` to disk under `key`.
-   * Overwrites any existing file for that key.
+   * Uses a temp-file + atomic rename to avoid corruption from concurrent writers
+   * (e.g. both the REPL daemon and a cron hub trying to checkpoint simultaneously).
    */
   async save(key: string, data: unknown): Promise<void> {
     await this.init();
     const filePath = this.resolvePath(key);
+    const tmpPath = `${filePath}.tmp.${randomBytes(8).toString('hex')}`;
     const content = JSON.stringify(data, null, 2);
-    await writeFile(filePath, content, { encoding: 'utf-8' });
+    await writeFile(tmpPath, content, { encoding: 'utf-8' });
+    await rename(tmpPath, filePath);
   }
 
   /**
