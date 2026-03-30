@@ -35,7 +35,7 @@ import { MemoryStore } from '../src/memory/store.js';
 // Mock SkillManager.installSkill to write to a temp directory instead of ~/.openclaw/skills/
 const TEST_SKILLS_DIR = join(process.cwd(), '.test-skills-output');
 
-vi.mock('../src/openclaw/skillManager.js', () => ({
+vi.mock('../src/hermes/skillManager.js', () => ({
   SkillManager: vi.fn().mockImplementation(() => ({
     installSkill: vi.fn(async (skill: GeneratedSkill) => {
       const dir = join(TEST_SKILLS_DIR, skill.id);
