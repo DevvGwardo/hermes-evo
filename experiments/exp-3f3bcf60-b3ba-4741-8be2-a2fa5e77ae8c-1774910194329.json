@@ -1,0 +1,13 @@
+{
+  "experimentId": "exp-3f3bcf60-b3ba-4741-8be2-a2fa5e77ae8c-1774910194329",
+  "experimentName": "A/B: Read — Not Found Skill",
+  "skill": {
+    "id": "3f3bcf60-b3ba-4741-8be2-a2fa5e77ae8c",
+    "name": "Read — Not Found Skill",
+    "description": "Handles not found errors for the Read tool. Automatically generated from failure pattern analysis.",
+    "confidence": 0.6499999999999999,
+    "targetFailurePattern": "fp-oode7l",
+    "generatedAt": "2026-03-30T22:36:34.326Z"
+  },
+  "createdAt": "2026-03-30T22:36:34.392Z"
+}
