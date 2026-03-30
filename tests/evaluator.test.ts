@@ -244,8 +244,8 @@ describe('scorer.ts — scoreSessions()', () => {
     });
 
     it('drops below 100 when slower than baseline (wall-clock fallback)', () => {
-      const start = Date.now() - 120_000;
-      const sessions = [makeSession({ startTime: start, endTime: Date.now(), avgLatencyMs: 0, totalToolCalls: 0 })];
+      const now = Date.now();
+      const sessions = [makeSession({ startTime: now - 120_000, endTime: now, avgLatencyMs: 0, totalToolCalls: 0 })];
       // Duration 120s, baseline 60s → (60000/120000)*100 = 50
       expect(calcSpeed(sessions, 60_000)).toBe(50);
     });
