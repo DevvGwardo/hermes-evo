@@ -314,7 +314,7 @@ export const promoter = {
       experimentId: experiment.id,
       metrics: {
         improvementPct: experiment.improvementPct,
-        afterScore: experiment.statisticalSignificance * 100,
+        afterScore: experiment.improvementPct,
       },
     });
 
