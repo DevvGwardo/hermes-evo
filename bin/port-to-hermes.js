@@ -116,7 +116,7 @@ rx(join(ROOT, 'src', 'experiment', 'experimentLog.ts'), [
 rx(join(ROOT, 'src', 'harness', 'monitor.ts'), [
   [/OPENCLAW_GATEWAY_TOKEN/g, 'HERMES_GATEWAY_TOKEN'],
   [/OPENCLAW_POLL_INTERVAL_MS/g, 'HERMES_POLL_INTERVAL_MS'],
-  [/Harness Monitor/g, 'Hermes Harness Monitor'],
+  [/(?<!Hermes )Harness Monitor/g, 'Hermes Harness Monitor'],
   [/OpenClaw event hooks/g, 'Hermes event hooks'],
   [/\.openclaw\/identity/g, '.hermes/hermes-agent/identity'],
 ]);
