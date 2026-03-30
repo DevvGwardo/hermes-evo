@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-evo",
+  "name": "hermes-evo",
   "version": "0.1.0",
-  "description": "Self-evolving AI assistant framework for OpenClaw",
+  "description": "Self-evolution engine for Hermes — monitors performance, detects failures, generates fixes, A/B tests them, and auto-deploys winners",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run dev:core\" \"npm run dev:dashboard\"",
