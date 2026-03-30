@@ -405,8 +405,8 @@ The gateway client reads its auth token from `~/.openclaw/openclaw.json`. Make s
 By default, skills with 100% improvement (synthetic experiments) require human approval as a safety check. Approve them from the REPL:
 
 ```
-OpenClaw Evo > skills          # list skills and their IDs
-OpenClaw Evo > approve <id>    # deploy the skill
+Hermes Evo > skills          # list skills and their IDs
+Hermes Evo > approve <id>    # deploy the skill
 ```
 
 Or set `AUTO_APPROVE_CONFIDENCE=95` to auto-deploy skills with > 95% statistical confidence.
