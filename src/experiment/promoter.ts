@@ -122,10 +122,9 @@ export const promoter = {
 
     // Ensure statistical results are populated
     const statResult = comparator.compare(experiment);
-    experiment.statisticalSignificance = statResult.confidence;
-    experiment.improvementPct = improvementPct;
-
     const { confidence, improvementPct } = statResult;
+    experiment.statisticalSignificance = confidence;
+    experiment.improvementPct = improvementPct;
 
     const meetsConfidence = confidence >= DEFAULT_CONFIDENCE;
     const meetsImprovement = improvementPct >= MIN_IMPROVEMENT_PCT;
