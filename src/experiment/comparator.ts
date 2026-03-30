@@ -120,7 +120,7 @@ export const comparator = {
         ? ((treatmentSuccessRate - controlSuccessRate) / controlSuccessRate) * 100
         : treatmentSuccessRate * 100;
 
-    const confidence = Math.max(0, Math.min(1, 1 - pValue));
+    const confidence = Math.max(0, Math.min(0.9999, 1 - pValue));
     const statisticallySignificant = pValue < 0.05; // conventional α = 0.05
 
     log.info(`Statistical comparison for experiment ${experiment.id}`, {

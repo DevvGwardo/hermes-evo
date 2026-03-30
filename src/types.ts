@@ -238,6 +238,7 @@ export interface PromotionDecision {
   promoted: boolean;
   reason: string;
   experimentsValidated: number;
+  statisticalSignificance?: number;
   requiresApproval?: boolean;
   approvalId?: string;
 }

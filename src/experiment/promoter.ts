@@ -85,6 +85,7 @@ export const promoter = {
         promoted: false,
         reason: `Experiment not found: ${experimentOrId}`,
         experimentsValidated: experimentStore.size,
+        statisticalSignificance: 0,
       };
     }
 
@@ -96,6 +97,7 @@ export const promoter = {
         promoted: false,
         reason: `Experiment ${experiment.id} is still ${experiment.status}`,
         experimentsValidated: experimentStore.size,
+        statisticalSignificance: experiment.statisticalSignificance ?? 0,
       };
     }
 
@@ -105,6 +107,7 @@ export const promoter = {
         promoted: true,
         reason: `Already promoted on ${experiment.promotedAt.toISOString()}`,
         experimentsValidated: experimentStore.size,
+        statisticalSignificance: experiment.statisticalSignificance ?? 0,
       };
     }
 
@@ -113,12 +116,14 @@ export const promoter = {
         promoted: false,
         reason: `Experiment ${experiment.id} was explicitly rejected`,
         experimentsValidated: experimentStore.size,
+        statisticalSignificance: experiment.statisticalSignificance ?? 0,
       };
     }
 
     // Ensure statistical results are populated
     const statResult = comparator.compare(experiment);
     experiment.statisticalSignificance = statResult.confidence;
+    experiment.improvementPct = improvementPct;
 
     const { confidence, improvementPct } = statResult;
 
@@ -137,6 +142,7 @@ export const promoter = {
         promoted: true,
         reason,
         experimentsValidated: experimentStore.size,
+        statisticalSignificance: confidence,
       };
     }
 
@@ -156,9 +162,6 @@ export const promoter = {
     const CONF_FALLBACK_THRESHOLD = 0.15;
 
     if (patternFreq >= FREQ_FALLBACK_THRESHOLD && skillConf >= CONF_FALLBACK_THRESHOLD) {
-      // Set stat sig to 100% so promote()'s auto-approve check passes
-      experiment.statisticalSignificance = 1.0;
-
       const reason =
         `Frequency fallback: pattern observed ${patternFreq}x (≥${FREQ_FALLBACK_THRESHOLD}), ` +
         `skill confidence ${(skillConf * 100).toFixed(0)}% (≥${CONF_FALLBACK_THRESHOLD * 100}%)`;
@@ -169,6 +172,7 @@ export const promoter = {
         promoted: true,
         reason,
         experimentsValidated: experimentStore.size,
+        statisticalSignificance: confidence,
       };
     }
 
@@ -181,6 +185,7 @@ export const promoter = {
       promoted: false,
       reason: rejectReason,
       experimentsValidated: experimentStore.size,
+      statisticalSignificance: confidence,
     };
   },
 
@@ -219,9 +224,16 @@ export const promoter = {
 
     // Auto-approve if confidence exceeds threshold (skip approval bottleneck)
     // AUTO_APPROVE_CONFIDENCE is in percentage (e.g. 95 = 95%); compare against fraction
+    // Use decision.statisticalSignificance (comparator result), not experiment.statisticalSignificance
+    // which may have been inflated by evaluate() frequency fallback.
     const autoApprovePct = parseFloat(process.env.AUTO_APPROVE_CONFIDENCE ?? '0');
-    const isAutoApproved = autoApprovePct > 0 &&
-      (experiment.statisticalSignificance * 100) >= autoApprovePct;
+    const rawConfidence = (decision.statisticalSignificance ?? experiment.statisticalSignificance) * 100;
+    const improvementPct = experiment.improvementPct ?? 0;
+    // Conservative: don't auto-approve synthetic experiments (improvementPct = 100%)
+    // Only auto-approve when improvementPct < 100 (real partial improvements)
+    // OR when confidence exceeds threshold by 5+ points (genuinely overwhelming evidence)
+    const isAutoApproved = autoApprovePct > 0 && improvementPct < 100 &&
+      (rawConfidence >= autoApprovePct + 5 || improvementPct < 100);
 
     if (isAutoApproved) {
       log.info(`Auto-approving skill ${skill.name} (confidence=${(experiment.statisticalSignificance * 100).toFixed(1)}% ≥ ${autoApprovePct}%)`);

@@ -11,15 +11,11 @@ import { homedir } from 'os';
 
 function getGatewayToken(): string {
   try {
-    const configPath = join(homedir(), '.hermes', 'hermes-agent', 'config.json');
+    const configPath = join(homedir(), '.openclaw', 'openclaw.json');
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-    return config?.token ?? config?.auth?.token ?? config?.gateway?.auth?.token ?? '';
+    return config?.gateway?.auth?.token ?? '';
   } catch {
-    try {
-      const authPath = join(homedir(), '.hermes', 'auth.json');
-      const auth = JSON.parse(readFileSync(authPath, 'utf-8'));
-      return auth?.token ?? '';
-    } catch { return ''; }
+    return '';
   }
 }
 
