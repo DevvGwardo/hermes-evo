@@ -1,0 +1,13 @@
+{
+  "experimentId": "exp-a5f7589b-4799-482b-8e67-a92d641b2cb8-1774882527151",
+  "experimentName": "A/B: Grep — Timeout Skill",
+  "skill": {
+    "id": "a5f7589b-4799-482b-8e67-a92d641b2cb8",
+    "name": "Grep — Timeout Skill",
+    "description": "Handles timeout errors for the Grep tool. Automatically generated from failure pattern analysis.",
+    "confidence": 0.5767647060021385,
+    "targetFailurePattern": "fp-f2vzdx",
+    "generatedAt": "2026-03-30T14:55:26.570Z"
+  },
+  "createdAt": "2026-03-30T14:55:27.187Z"
+}
