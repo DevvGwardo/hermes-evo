@@ -1,0 +1,13 @@
+{
+  "experimentId": "exp-87d50ae0-91be-458f-87d4-f05c06e85886-1774970156296",
+  "experimentName": "A/B: Bash — Network Error Skill",
+  "skill": {
+    "id": "87d50ae0-91be-458f-87d4-f05c06e85886",
+    "name": "Bash — Network Error Skill",
+    "description": "Handles network error errors for the Bash tool. Automatically generated from failure pattern analysis.",
+    "confidence": 0.7,
+    "targetFailurePattern": "fp-lt6123",
+    "generatedAt": "2026-03-31T15:15:55.551Z"
+  },
+  "createdAt": "2026-03-31T15:15:56.345Z"
+}
