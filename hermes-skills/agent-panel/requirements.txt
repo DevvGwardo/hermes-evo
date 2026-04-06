@@ -1,0 +1,4 @@
+dspy
+anthropic
+openai
+requests
