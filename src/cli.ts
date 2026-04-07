@@ -21,6 +21,7 @@ import { startServer } from './server.js';
 import { improvementLog } from './memory/improvementLog.js';
 import { failureCorpus } from './memory/failureCorpus.js';
 import { promoter } from './experiment/promoter.js';
+import { ultrawork, ultraworkHelp } from './orchestrator/index.js';
 import chalk from 'chalk';
 import * as readline from 'readline/promises';
 import * as fs from 'fs';
@@ -34,6 +35,8 @@ const isOnceMode = process.argv.includes('--once');
 const isCronMode = process.argv.includes('--cron'); // one-shot but saves checkpoint (for cron jobs)
 const isWatchMode = process.argv.includes('--watch');
 const isTestFailures = process.argv.includes('--test-failures');
+const ultraworkArgIndex = process.argv.indexOf('--ultrawork');
+const isUltraworkMode = ultraworkArgIndex >= 0;
 
 function buildDashboard(): void {
   const dashboardDir = path.join(PROJECT_ROOT, 'dashboard');
@@ -216,6 +219,8 @@ async function startRepl(): Promise<void> {
       ['logs',         'Show recent evolution cycle logs'],
       ['stats',        'Show performance statistics'],
       ['watchdog',     'Show gateway watchdog status'],
+      ['ultrawork',    'Run a task with multi-model orchestration'],
+      ['providers',    'Show detected AI provider availability'],
       ['restart',      'Stop and restart the hub'],
       ['help',         'Show this help'],
       ['quit',         'Exit the REPL'],
@@ -366,6 +371,43 @@ async function startRepl(): Promise<void> {
       void initHub();
     }
 
+    // ── ultrawork ─────────────────────────────────────────────────────────────
+    else if (cmd === 'ultrawork' || cmd === 'ulw') {
+      const task = args.join(' ');
+      if (!task) {
+        console.log(chalk.yellow('  Usage: ultrawork <task description>'));
+        console.log(chalk.gray('  Run `npx tsx src/cli.ts --ultrawork <task>` for the full ultrawork experience.'));
+        console.log(chalk.gray(ultraworkHelp()));
+      } else {
+        const result = await ultrawork(task, {
+          verbose: true,
+        });
+        divider('ultrawork result');
+        console.log(`  Task:      ${result.task}`);
+        console.log(`  Category:  ${result.category}`);
+        console.log(`  Agent:     ${result.agent}`);
+        console.log(`  Model:     ${result.model}`);
+        console.log(`  Success:   ${result.success ? chalk.green('yes') : chalk.red('no')}`);
+        console.log(`  Tool calls: ${result.toolCalls}`);
+        console.log(`  Duration:   ${result.durationMs}ms`);
+        if (result.errors.length > 0) {
+          console.log(chalk.red(`  Errors:     ${result.errors.join('; ')}`));
+        }
+        if (result.hooksFired.length > 0) {
+          console.log(chalk.gray(`  Hooks:     ${result.hooksFired.slice(0, 5).join(', ')}${result.hooksFired.length > 5 ? '...' : ''}`));
+        }
+      }
+    }
+
+    // ── providers ─────────────────────────────────────────────────────────────
+    else if (cmd === 'providers') {
+      const { detectProviders, summarizeProviders } = await import('./orchestrator/index.js');
+      const avail = detectProviders();
+      console.log(chalk.cyan('Detected providers:'));
+      console.log(`  ${chalk.green('●')} ${summarizeProviders(avail)}`);
+      console.log(chalk.gray('\n  (Set API keys in environment to enable more models)'));
+    }
+
     // ── help ──────────────────────────────────────────────────────────────────
     else if (cmd === 'help') {
       printHelp();
@@ -479,6 +521,28 @@ async function main(): Promise<void> {
       hub.stop();
       process.exit(1);
     }
+  }
+
+  if (isUltraworkMode) {
+    const task = process.argv.slice(ultraworkArgIndex + 1).join(' ');
+    if (!task) {
+      console.log(chalk.yellow('Usage: npx tsx src/cli.ts --ultrawork <task description>'));
+      console.log(ultraworkHelp());
+      process.exit(1);
+    }
+    const result = await ultrawork(task, { verbose: true });
+    console.log(chalk.bold('\n=== ultrawork result ==='));
+    console.log(`  Task:      ${result.task}`);
+    console.log(`  Category:  ${result.category}`);
+    console.log(`  Agent:     ${result.agent}`);
+    console.log(`  Model:     ${result.model}`);
+    console.log(`  Success:   ${result.success ? chalk.green('yes') : chalk.red('no')}`);
+    console.log(`  Tool calls: ${result.toolCalls}`);
+    console.log(`  Duration:   ${result.durationMs}ms`);
+    if (result.errors.length > 0) {
+      console.log(chalk.red(`  Errors:     ${result.errors.join('; ')}`));
+    }
+    process.exit(result.success ? 0 : 1);
   }
 
   // Default: REPL mode
