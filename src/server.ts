@@ -169,9 +169,74 @@ function serveStatic(res: http.ServerResponse, urlPath: string): void {
   }
 }
 
+// ── SSE streaming ─────────────────────────────────────────────────────────
+
+interface SSEClient {
+  res: http.ServerResponse;
+  lastHash: string;
+}
+
+const sseClients = new Set<SSEClient>();
+let ssePushTimer: ReturnType<typeof setInterval> | null = null;
+
+function sseWrite(client: SSEClient, event: string, data: string): void {
+  try {
+    client.res.write(`event: ${event}\ndata: ${data}\n\n`);
+  } catch {
+    sseClients.delete(client);
+  }
+}
+
+/** Lightweight hash to detect changes without deep-comparing objects. */
+function quickHash(obj: unknown): string {
+  return JSON.stringify(obj).length + ':' + JSON.stringify(obj).slice(0, 200);
+}
+
+function startSSEPush(hub: EvoHub): void {
+  if (ssePushTimer) return;
+
+  // Server-side poll at 1s — one poll feeds all connected SSE clients
+  ssePushTimer = setInterval(async () => {
+    if (sseClients.size === 0) return;
+
+    try {
+      const [status, cycles, skills, experiments, failures] = await Promise.all([
+        hub.getStatus(),
+        Promise.resolve(hub.getCompletedCycles()),
+        Promise.resolve(hub.getProposedSkills()),
+        Promise.resolve(hub.getActiveExperiments()),
+        failureCorpus.getPatterns(0),
+      ]);
+
+      const snapshot = { status, cycles, skills, experiments, failures };
+      const hash = quickHash(snapshot);
+      const payload = JSON.stringify(snapshot);
+
+      for (const client of sseClients) {
+        if (client.lastHash !== hash) {
+          client.lastHash = hash;
+          sseWrite(client, 'dashboard', payload);
+        }
+      }
+    } catch {
+      // Next tick will retry
+    }
+  }, 1000);
+}
+
+function stopSSEPush(): void {
+  if (ssePushTimer) {
+    clearInterval(ssePushTimer);
+    ssePushTimer = null;
+  }
+}
+
 // ── Request router ────────────────────────────────────────────────────────
 
 function createRouter(hub: EvoHub) {
+  // Start server-side SSE push loop
+  startSSEPush(hub);
+
   return function route(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = req.url ?? '/';
     const method = req.method ?? 'GET';
@@ -393,6 +458,49 @@ function createRouter(hub: EvoHub) {
         return;
       }
 
+      // GET /api/stream — SSE endpoint for real-time dashboard updates
+      if (method === 'GET' && url === '/api/stream') {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+          'X-Accel-Buffering': 'no',  // Disable nginx buffering
+        });
+
+        const client: SSEClient = { res, lastHash: '' };
+        sseClients.add(client);
+
+        // Send initial snapshot immediately
+        void (async () => {
+          try {
+            const [status, cycles, skills, experiments, failures] = await Promise.all([
+              hub.getStatus(),
+              Promise.resolve(hub.getCompletedCycles()),
+              Promise.resolve(hub.getProposedSkills()),
+              Promise.resolve(hub.getActiveExperiments()),
+              failureCorpus.getPatterns(0),
+            ]);
+            const snapshot = { status, cycles, skills, experiments, failures };
+            client.lastHash = quickHash(snapshot);
+            sseWrite(client, 'dashboard', JSON.stringify(snapshot));
+          } catch {
+            // Client will get data on next push cycle
+          }
+        })();
+
+        // Heartbeat every 15s to keep connection alive through proxies
+        const heartbeat = setInterval(() => {
+          try { res.write(': heartbeat\n\n'); } catch { clearInterval(heartbeat); }
+        }, 15_000);
+
+        req.on('close', () => {
+          sseClients.delete(client);
+          clearInterval(heartbeat);
+        });
+        return;
+      }
+
       // ── API 404 ─────────────────────────────────────────────────────────
       if (url.startsWith('/api/')) {
         sendError(res, 404, `Route not found: ${url}`);
@@ -413,6 +521,14 @@ function createRouter(hub: EvoHub) {
 export function startServer(hub: EvoHub, port?: number): http.Server {
   const p = port ?? DEFAULT_CONFIG.DASHBOARD_PORT;
   const server = http.createServer(createRouter(hub));
+
+  server.on('close', () => {
+    stopSSEPush();
+    for (const client of sseClients) {
+      try { client.res.end(); } catch { /* noop */ }
+    }
+    sseClients.clear();
+  });
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
